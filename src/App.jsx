@@ -1271,7 +1271,7 @@ const EmployeePanel = memo(({
   );
 });
 
-// Panel de administrador simplificado para la gestión básica
+// Panel de administrador COMPLETO - Reemplaza el AdminPanel en App.jsx
 const AdminPanel = memo(({ 
   users, 
   tasks, 
@@ -1284,6 +1284,630 @@ const AdminPanel = memo(({
   deleteCategoryFromDB 
 }) => {
   const [activeTab, setActiveTab] = useState('users');
+
+  // Componente Analytics
+  const AnalyticsPanel = () => {
+    const [chartData, setChartData] = useState({
+      dailyHours: {},
+      employeeHours: {},
+      categoryDistribution: {},
+      departmentHours: {}
+    });
+
+    useEffect(() => {
+      // Procesar datos para gráficos
+      const dailyHours = {};
+      const employeeHours = {};
+      const categoryDistribution = {};
+      const departmentHours = {};
+
+      // Agrupar tareas por fecha
+      tasks.forEach(task => {
+        const user = users.find(u => u.id === task.user_id);
+        if (!user) return;
+
+        // Horas por día
+        if (!dailyHours[task.date]) dailyHours[task.date] = 0;
+        dailyHours[task.date] += task.hours;
+
+        // Horas por empleado
+        if (!employeeHours[user.name]) employeeHours[user.name] = 0;
+        employeeHours[user.name] += task.hours;
+
+        // Distribución por categoría
+        if (!categoryDistribution[task.category]) categoryDistribution[task.category] = 0;
+        categoryDistribution[task.category] += task.hours;
+
+        // Horas por departamento
+        if (!departmentHours[user.department]) departmentHours[user.department] = 0;
+        departmentHours[user.department] += task.hours;
+      });
+
+      setChartData({
+        dailyHours,
+        employeeHours,
+        categoryDistribution,
+        departmentHours
+      });
+    }, [tasks, users]);
+
+    const totalHours = useMemo(() => 
+      Object.values(chartData.employeeHours).reduce((sum, hours) => sum + hours, 0), 
+      [chartData.employeeHours]
+    );
+
+    const totalTasks = useMemo(() => tasks.length, [tasks]);
+    const activeEmployees = useMemo(() => Object.keys(chartData.employeeHours).length, [chartData.employeeHours]);
+    const averageHoursPerEmployee = useMemo(() => 
+      activeEmployees > 0 ? (totalHours / activeEmployees).toFixed(1) : 0, 
+      [totalHours, activeEmployees]
+    );
+
+    const getColorForIndex = (index) => {
+      const colors = [
+        'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-500',
+        'bg-red-500', 'bg-indigo-500', 'bg-pink-500', 'bg-teal-500'
+      ];
+      return colors[index % colors.length];
+    };
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Analytics Avanzados</h2>
+
+        {/* Métricas clave */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Horas</p>
+                <p className="text-2xl font-bold text-blue-600">{totalHours.toFixed(1)}h</p>
+              </div>
+              <div className="p-3 bg-blue-100 rounded-full">
+                <Clock className="text-blue-600" size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Tareas</p>
+                <p className="text-2xl font-bold text-green-600">{totalTasks}</p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-full">
+                <Target className="text-green-600" size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Empleados Activos</p>
+                <p className="text-2xl font-bold text-purple-600">{activeEmployees}</p>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-full">
+                <Users className="text-purple-600" size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Promedio/Empleado</p>
+                <p className="text-2xl font-bold text-orange-600">{averageHoursPerEmployee}h</p>
+              </div>
+              <div className="p-3 bg-orange-100 rounded-full">
+                <Activity className="text-orange-600" size={24} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico de barras - Horas por empleado */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            <BarChart3 className="mr-2" size={20} />
+            Comparativa por Empleado
+          </h3>
+          <div className="space-y-4">
+            {Object.entries(chartData.employeeHours)
+              .sort(([,a], [,b]) => b - a)
+              .map(([employee, hours], index) => {
+                const percentage = totalHours > 0 ? (hours / totalHours) * 100 : 0;
+                return (
+                  <div key={employee}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium">{employee}</span>
+                      <span>{hours.toFixed(1)}h ({percentage.toFixed(1)}%)</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div 
+                        className={`h-3 rounded-full transition-all duration-500 ${getColorForIndex(index)}`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Distribución por categorías */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            <Target className="mr-2" size={20} />
+            Distribución por Categorías
+          </h3>
+          <div className="space-y-4">
+            {Object.entries(chartData.categoryDistribution)
+              .sort(([,a], [,b]) => b - a)
+              .map(([category, hours], index) => {
+                const percentage = totalHours > 0 ? (hours / totalHours) * 100 : 0;
+                return (
+                  <div key={category}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium">{category}</span>
+                      <span>{hours.toFixed(1)}h</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full transition-all duration-500 ${getColorForIndex(index)}`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Componente Seguimiento
+  const TrackingPanel = () => {
+    const [filters, setFilters] = useState({
+      empleado: '',
+      categoria: '',
+      fechaInicio: '',
+      fechaFin: ''
+    });
+
+    const filteredTasks = useMemo(() => {
+      return tasks.filter(task => {
+        if (filters.empleado && task.user_id !== parseInt(filters.empleado)) return false;
+        if (filters.categoria && task.category !== filters.categoria) return false;
+        if (filters.fechaInicio && task.date < filters.fechaInicio) return false;
+        if (filters.fechaFin && task.date > filters.fechaFin) return false;
+        return true;
+      });
+    }, [tasks, filters]);
+
+    const employeeStats = useMemo(() => {
+      const stats = {};
+      
+      filteredTasks.forEach(task => {
+        const user = users.find(u => u.id === task.user_id);
+        if (!user) return;
+        
+        if (!stats[user.id]) {
+          stats[user.id] = {
+            user,
+            totalHours: 0,
+            tasks: 0,
+            categories: {}
+          };
+        }
+        
+        stats[user.id].totalHours += task.hours;
+        stats[user.id].tasks += 1;
+        
+        if (!stats[user.id].categories[task.category]) {
+          stats[user.id].categories[task.category] = 0;
+        }
+        stats[user.id].categories[task.category] += task.hours;
+      });
+      
+      return Object.values(stats);
+    }, [filteredTasks, users]);
+
+    const allCategories = useMemo(() => {
+      const cats = new Set();
+      Object.values(categories).forEach(deptCats => 
+        deptCats.forEach(cat => cats.add(cat))
+      );
+      return Array.from(cats);
+    }, [categories]);
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Seguimiento de Empleados</h2>
+
+        {/* Filtros */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Filtros</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
+              <OptimizedSelect
+                value={filters.empleado}
+                onChange={(value) => setFilters(prev => ({ ...prev, empleado: value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Todos los empleados</option>
+                {users.filter(u => u.role !== 'admin').map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
+              </OptimizedSelect>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+              <OptimizedSelect
+                value={filters.categoria}
+                onChange={(value) => setFilters(prev => ({ ...prev, categoria: value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Todas las categorías</option>
+                {allCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </OptimizedSelect>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha inicio</label>
+              <OptimizedInput
+                type="date"
+                value={filters.fechaInicio}
+                onChange={(value) => setFilters(prev => ({ ...prev, fechaInicio: value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha fin</label>
+              <OptimizedInput
+                type="date"
+                value={filters.fechaFin}
+                onChange={(value) => setFilters(prev => ({ ...prev, fechaFin: value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Estadísticas por empleado */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {employeeStats.map(stat => {
+            const sortedCategories = Object.entries(stat.categories)
+              .sort(([,a], [,b]) => b - a);
+            
+            return (
+              <div key={stat.user.id} className="bg-white rounded-lg shadow-sm border p-6">
+                <div className="mb-4">
+                  <h4 className="font-semibold text-lg">{stat.user.name}</h4>
+                  <p className="text-gray-600">{stat.user.department}</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{stat.totalHours.toFixed(1)}h</div>
+                    <div className="text-gray-600 text-sm">Total horas</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{stat.tasks}</div>
+                    <div className="text-gray-600 text-sm">Tareas completadas</div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h5 className="font-medium text-gray-700">Distribución por categorías:</h5>
+                  {sortedCategories.map(([category, hours]) => {
+                    const percentage = (hours / stat.totalHours) * 100;
+                    return (
+                      <div key={category}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>{category}</span>
+                          <span>{hours.toFixed(1)}h ({percentage.toFixed(1)}%)</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {employeeStats.length === 0 && (
+          <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
+            <p className="text-gray-600">No se encontraron datos con los filtros aplicados</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Componente Alertas
+  const AlertasPanel = () => {
+    const [alertas, setAlertas] = useState([]);
+    const [filtroEmpleado, setFiltroEmpleado] = useState('');
+    const [filtroFecha, setFiltroFecha] = useState('');
+
+    useEffect(() => {
+      const calcularAlertas = () => {
+        const alertasEncontradas = [];
+        const empleadosActivos = users.filter(u => u.role !== 'admin');
+        
+        // Generar fechas de los últimos 30 días
+        const fechas = [];
+        for (let i = 0; i < 30; i++) {
+          const fecha = new Date();
+          fecha.setDate(fecha.getDate() - i);
+          fechas.push(fecha.toISOString().split('T')[0]);
+        }
+
+        empleadosActivos.forEach(empleado => {
+          fechas.forEach(fecha => {
+            // No procesar fechas futuras
+            const hoy = new Date().toISOString().split('T')[0];
+            if (fecha > hoy) return;
+
+            // Excluir sábados y domingos
+            const fechaObj = new Date(fecha + 'T00:00:00');
+            const diaSemana = fechaObj.getDay();
+            if (diaSemana === 0 || diaSemana === 6) return;
+
+            // Calcular horas trabajadas en esta fecha
+            const tareasDelDia = tasks.filter(task => 
+              task.user_id === empleado.id && task.date === fecha
+            );
+            
+            const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
+            const horasObjetivo = empleado.horas_objetivo || 8;
+            const horasFaltantes = horasObjetivo - horasRegistradas;
+
+            // Solo crear alerta si faltan horas
+            if (horasFaltantes > 0 && horasRegistradas > 0) {
+              alertasEncontradas.push({
+                id: `${empleado.id}-${fecha}`,
+                empleado: empleado.name,
+                empleadoId: empleado.id,
+                fecha: fecha,
+                horasObjetivo: horasObjetivo,
+                horasRegistradas: horasRegistradas,
+                horasFaltantes: horasFaltantes,
+                departamento: empleado.department,
+                tipo: horasFaltantes >= 4 ? 'critica' : horasFaltantes >= 2 ? 'moderada' : 'leve'
+              });
+            } else if (horasRegistradas === 0 && fecha !== hoy) {
+              alertasEncontradas.push({
+                id: `${empleado.id}-${fecha}`,
+                empleado: empleado.name,
+                empleadoId: empleado.id,
+                fecha: fecha,
+                horasObjetivo: horasObjetivo,
+                horasRegistradas: 0,
+                horasFaltantes: horasObjetivo,
+                departamento: empleado.department,
+                tipo: 'critica'
+              });
+            }
+          });
+        });
+
+        // Ordenar por fecha (más recientes primero) y luego por severidad
+        alertasEncontradas.sort((a, b) => {
+          const fechaComparison = new Date(b.fecha) - new Date(a.fecha);
+          if (fechaComparison !== 0) return fechaComparison;
+          
+          const tipoOrden = { critica: 3, moderada: 2, leve: 1 };
+          return tipoOrden[b.tipo] - tipoOrden[a.tipo];
+        });
+
+        setAlertas(alertasEncontradas);
+      };
+
+      calcularAlertas();
+    }, [users, tasks]);
+
+    const alertasFiltradas = useMemo(() => {
+      return alertas.filter(alerta => {
+        if (filtroEmpleado && alerta.empleadoId !== parseInt(filtroEmpleado)) return false;
+        if (filtroFecha && alerta.fecha !== filtroFecha) return false;
+        return true;
+      });
+    }, [alertas, filtroEmpleado, filtroFecha]);
+
+    const estadisticas = useMemo(() => {
+      const total = alertasFiltradas.length;
+      const criticas = alertasFiltradas.filter(a => a.tipo === 'critica').length;
+      const moderadas = alertasFiltradas.filter(a => a.tipo === 'moderada').length;
+      const leves = alertasFiltradas.filter(a => a.tipo === 'leve').length;
+      
+      return { total, criticas, moderadas, leves };
+    }, [alertasFiltradas]);
+
+    const formatearFecha = (fecha) => {
+      const date = new Date(fecha);
+      return date.toLocaleDateString('es-ES', { 
+        weekday: 'short', 
+        day: 'numeric', 
+        month: 'short',
+        year: 'numeric'
+      });
+    };
+
+    const getAlertaColor = (tipo) => {
+      switch (tipo) {
+        case 'critica': return 'border-red-200 bg-red-50';
+        case 'moderada': return 'border-orange-200 bg-orange-50';
+        case 'leve': return 'border-yellow-200 bg-yellow-50';
+        default: return 'border-gray-200 bg-gray-50';
+      }
+    };
+
+    const getAlertaIcon = (tipo) => {
+      switch (tipo) {
+        case 'critica': return <AlertTriangle className="text-red-600" size={20} />;
+        case 'moderada': return <AlertCircle className="text-orange-600" size={20} />;
+        case 'leve': return <Clock className="text-yellow-600" size={20} />;
+        default: return <AlertCircle className="text-gray-600" size={20} />;
+      }
+    };
+
+    const getAlertaTipoTexto = (tipo) => {
+      switch (tipo) {
+        case 'critica': return 'Crítica';
+        case 'moderada': return 'Moderada';
+        case 'leve': return 'Leve';
+        default: return 'Normal';
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Control de Alertas</h2>
+
+        {/* Resumen de alertas */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Alertas</p>
+                <p className="text-2xl font-bold text-gray-800">{estadisticas.total}</p>
+              </div>
+              <div className="p-2 bg-gray-100 rounded-full">
+                <AlertCircle className="text-gray-600" size={20} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Críticas</p>
+                <p className="text-2xl font-bold text-red-600">{estadisticas.criticas}</p>
+              </div>
+              <div className="p-2 bg-red-100 rounded-full">
+                <AlertTriangle className="text-red-600" size={20} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Moderadas</p>
+                <p className="text-2xl font-bold text-orange-600">{estadisticas.moderadas}</p>
+              </div>
+              <div className="p-2 bg-orange-100 rounded-full">
+                <AlertCircle className="text-orange-600" size={20} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Leves</p>
+                <p className="text-2xl font-bold text-yellow-600">{estadisticas.leves}</p>
+              </div>
+              <div className="p-2 bg-yellow-100 rounded-full">
+                <Clock className="text-yellow-600" size={20} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtros */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Filtros</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
+              <OptimizedSelect
+                value={filtroEmpleado}
+                onChange={(value) => setFiltroEmpleado(value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Todos los empleados</option>
+                {users.filter(u => u.role !== 'admin').map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
+              </OptimizedSelect>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha específica</label>
+              <OptimizedInput
+                type="date"
+                value={filtroFecha}
+                onChange={(value) => setFiltroFecha(value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de alertas */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Incidencias Detectadas</h3>
+          
+          {alertasFiltradas.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="mx-auto mb-4 text-green-500" size={48} />
+              <h3 className="text-lg font-medium text-gray-700 mb-2">¡Excelente!</h3>
+              <p className="text-gray-600">No hay alertas pendientes con los filtros aplicados</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {alertasFiltradas.slice(0, 10).map(alerta => (
+                <div key={alerta.id} className={`p-4 rounded-lg border-l-4 ${getAlertaColor(alerta.tipo)}`}>
+                  <div className="flex items-start space-x-3">
+                    {getAlertaIcon(alerta.tipo)}
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <h4 className="font-medium text-gray-800">{alerta.empleado}</h4>
+                        <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                          alerta.tipo === 'critica' ? 'bg-red-100 text-red-800' :
+                          alerta.tipo === 'moderada' ? 'bg-orange-100 text-orange-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {getAlertaTipoTexto(alerta.tipo)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">{alerta.departamento}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">Fecha:</span>
+                          <div className="font-medium">{formatearFecha(alerta.fecha)}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Horas registradas:</span>
+                          <div className="font-medium">{alerta.horasRegistradas}h / {alerta.horasObjetivo}h</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Tiempo faltante:</span>
+                          <div className="font-bold text-red-600">{alerta.horasFaltantes.toFixed(1)}h</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const UserManagement = () => {
     const [newUser, setNewUser] = useState({
@@ -1543,6 +2167,39 @@ const AdminPanel = memo(({
                 Categorías
               </button>
             </li>
+            <li>
+              <button
+                onClick={() => setActiveTab('tracking')}
+                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
+                  activeTab === 'tracking' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <BarChart3 className="mr-3" size={20} />
+                Seguimiento
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
+                  activeTab === 'analytics' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <TrendingUp className="mr-3" size={20} />
+                Analytics
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => setActiveTab('alertas')}
+                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
+                  activeTab === 'alertas' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <AlertTriangle className="mr-3" size={20} />
+                Alertas
+              </button>
+            </li>
           </ul>
         </nav>
       </div>
@@ -1551,6 +2208,9 @@ const AdminPanel = memo(({
       <div className="flex-1">
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'categories' && <CategoryManagement />}
+        {activeTab === 'tracking' && <TrackingPanel />}
+        {activeTab === 'analytics' && <AnalyticsPanel />}
+        {activeTab === 'alertas' && <AlertasPanel />}
       </div>
     </div>
   );
