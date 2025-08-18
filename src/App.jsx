@@ -116,7 +116,7 @@ const useSupabaseData = () => {
           },
           { 
             username: 'admin', 
-            password: 'admin2', 
+            password: 'admin1', 
             name: 'Administrador', 
             email: 'admin@empresa.com', 
             department: 'Administración', 
