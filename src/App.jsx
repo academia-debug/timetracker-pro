@@ -17,25 +17,41 @@ class SupabaseClient {
     };
   }
 
-  async request(endpoint, options = {}) {
-    const url = `${this.url}/rest/v1${endpoint}`;
-    const config = {
-      headers: this.headers,
-      ...options
-    };
+async request(endpoint, options = {}) {
+  const url = `${this.url}/rest/v1${endpoint}`;
+  const config = {
+    headers: {
+      ...this.headers,
+      // Agregar header para que Supabase devuelva los datos insertados
+      'Prefer': 'return=representation'
+    },
+    ...options
+  };
 
-    try {
-      const response = await fetch(url, config);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      return { data, error: null };
-    } catch (error) {
-      console.error('Supabase request error:', error);
-      return { data: null, error };
+  try {
+    const response = await fetch(url, config);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+    
+    // Verificar si la respuesta tiene contenido antes de parsear JSON
+    const contentType = response.headers.get('content-type');
+    const hasContent = response.headers.get('content-length') !== '0';
+    
+    let data = null;
+    if (contentType?.includes('application/json') && hasContent) {
+      const text = await response.text();
+      if (text.trim()) {
+        data = JSON.parse(text);
+      }
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Supabase request error:', error);
+    return { data: null, error };
   }
+}
 
   async select(table, query = '*') {
     return this.request(`/${table}?select=${query}`);
