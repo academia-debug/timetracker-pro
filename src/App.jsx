@@ -1190,11 +1190,7 @@ const EmployeePanel = memo(({
               }`}
               style={{ width: `${Math.min((totalHours / user.horas_objetivo) * 100, 100)}%` }}
             />
-          </div>
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>{totalHours.toFixed(1)}h trabajadas</span>
-            <span>{user.horas_objetivo}h objetivo</span>
-          </div>
+          </div>          
         </div>
       </div>
 
