@@ -227,6 +227,7 @@ const useSupabaseData = () => {
       if (usersRes.data) setUsers(usersRes.data);
       if (tasksRes.data) setTasks(tasksRes.data);
       if (justifiedRes.data) setDiasJustificados(justifiedRes.data);
+      if (archivedRes.data) setAlertasArchivadas(archivedRes.data);
 
       // Procesar categorías
       if (categoriesRes.data) {
@@ -354,16 +355,56 @@ const useSupabaseData = () => {
       return { success: false, error: err.message };
     }
   }, [loadAllData]);
+// AGREGAR AQUÍ LAS NUEVAS FUNCIONES ↓
+const archivarAlerta = useCallback(async (alerta, archivedBy = 'admin') => {
+  try {
+    const alertData = {
+      alert_id: alerta.id,
+      empleado_id: alerta.empleadoId,
+      empleado_name: alerta.empleado,
+      fecha: alerta.fecha,
+      tipo: alerta.tipo,
+      horas_objetivo: alerta.horasObjetivo,
+      horas_registradas: alerta.horasRegistradas,
+      horas_faltantes: alerta.horasFaltantes,
+      departamento: alerta.departamento,
+      archived_by: archivedBy
+    };
 
+    const { data, error } = await supabase.insert('archived_alerts', alertData);
+    if (error) throw error;
+    
+    await loadAllData();
+    return { success: true };
+  } catch (err) {
+    console.error('Error archiving alert:', err);
+    return { success: false, error: err.message };
+  }
+}, [loadAllData]);
+
+const restaurarAlerta = useCallback(async (alertId) => {
+  try {
+    const { data, error } = await supabase.delete('archived_alerts', `alert_id=eq.${alertId}`);
+    if (error) throw error;
+    
+    await loadAllData();
+    return { success: true };
+  } catch (err) {
+    console.error('Error restoring alert:', err);
+    return { success: false, error: err.message };
+  }
+}, [loadAllData]);
   useEffect(() => {
     initializeData();
   }, [initializeData]);
 
+ 
   return {
     users,
     tasks,
     categories,
     diasJustificados,
+    alertasArchivadas, // NUEVO
     loading,
     error,
     createUser,
@@ -375,9 +416,13 @@ const useSupabaseData = () => {
     createCategory,
     deleteCategoryFromDB,
     createJustifiedDay,
+    archivarAlerta, // NUEVO
+    restaurarAlerta, // NUEVO
     loadAllData
   };
 };
+
+
 
 // Componente Input optimizado para evitar pérdida de foco
 const OptimizedInput = memo(({ value, onChange, placeholder, type = 'text', className = '', ...props }) => {
@@ -1416,15 +1461,14 @@ const EmployeePanel = memo(({
 
 // Panel de administrador COMPLETO - Reemplaza el AdminPanel en App.jsx
 const AdminPanel = memo(({ 
-  users, 
-  tasks, 
-  categories, 
-  diasJustificados,
+alertasArchivadas, // NUEVO
   createUser,
   updateUser,
   deleteUser,
   createCategory,
-  deleteCategoryFromDB 
+  deleteCategoryFromDB,
+  archivarAlerta, // NUEVO
+  restaurarAlerta // NUEVO 
 }) => {
   const [activeTab, setActiveTab] = useState('users');
 
@@ -2362,23 +2406,26 @@ const AdminPanel = memo(({
 
 // Componente principal
 const App = () => {
-  const {
-    users,
-    tasks,
-    categories,
-    diasJustificados,
-    loading,
-    error,
-    createUser,
-    updateUser,
-    deleteUser,
-    createTask,
-    updateTask,
-    deleteTask,
-    createCategory,
-    deleteCategoryFromDB,
-    createJustifiedDay,
-    loadAllData
+const {
+  users,
+  tasks,
+  categories,
+  diasJustificados,
+  alertasArchivadas, // AGREGAR ESTO
+  loading,
+  error,
+  createUser,
+  updateUser,
+  deleteUser,
+  createTask,
+  updateTask,
+  deleteTask,
+  createCategory,
+  deleteCategoryFromDB,
+  createJustifiedDay,
+  archivarAlerta, // AGREGAR ESTO
+  restaurarAlerta, // AGREGAR ESTO
+  loadAllData
   } = useSupabaseData();
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -2449,11 +2496,14 @@ const App = () => {
             tasks={tasks}
             categories={categories}
             diasJustificados={diasJustificados}
+            alertasArchivadas={alertasArchivadas} // NUEVO
             createUser={createUser}
             updateUser={updateUser}
             deleteUser={deleteUser}
             createCategory={createCategory}
             deleteCategoryFromDB={deleteCategoryFromDB}
+            archivarAlerta={archivarAlerta} // NUEVO
+            restaurarAlerta={restaurarAlerta} // NUEVO
           />
         ) : (
           <EmployeePanel 
