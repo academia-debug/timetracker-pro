@@ -1461,19 +1461,27 @@ const EmployeePanel = memo(({
 
 // Panel de administrador COMPLETO - Reemplaza el AdminPanel en App.jsx
 const AdminPanel = memo(({ 
-alertasArchivadas, // NUEVO
+  users,           // ← AGREGAR
+  tasks,           // ← AGREGAR  
+  categories,      // ← AGREGAR
+  diasJustificados, // ← AGREGAR
+  alertasArchivadas,
   createUser,
   updateUser,
   deleteUser,
   createCategory,
   deleteCategoryFromDB,
-  archivarAlerta, // NUEVO
-  restaurarAlerta // NUEVO 
+  archivarAlerta,
+  restaurarAlerta
 }) => {
   const [activeTab, setActiveTab] = useState('users');
 
   // Componente Analytics
   const AnalyticsPanel = () => {
+     const { users: contextUsers, tasks: contextTasks, categories: contextCategories } = useSupabaseData();
+     const users = contextUsers;
+     const tasks = contextTasks;
+     const categories = contextCategories;
     const [chartData, setChartData] = useState({
       dailyHours: {},
       employeeHours: {},
