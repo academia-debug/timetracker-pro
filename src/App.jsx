@@ -217,13 +217,13 @@ const useSupabaseData = () => {
   // Cargar todos los datos
   const loadAllData = useCallback(async () => {
     try {
-      const [usersRes, tasksRes, categoriesRes, justifiedRes] = await Promise.all([
-        supabase.select('users'),
-        supabase.select('tasks'),
-        supabase.select('categories'),
-        supabase.select('justified_days')
-      ]);
-
+      const [usersRes, tasksRes, categoriesRes, justifiedRes, archivedRes] = await Promise.all([
+  supabase.select('users'),
+  supabase.select('tasks'),
+  supabase.select('categories'),
+  supabase.select('justified_days'),
+  supabase.select('archived_alerts') // NUEVO
+]);
       if (usersRes.data) setUsers(usersRes.data);
       if (tasksRes.data) setTasks(tasksRes.data);
       if (justifiedRes.data) setDiasJustificados(justifiedRes.data);
