@@ -1831,252 +1831,428 @@ const AdminPanel = memo(({
   };
 
   // Componente Alertas
-  const AlertasPanel = () => {
-    const [alertas, setAlertas] = useState([]);
-    const [filtroEmpleado, setFiltroEmpleado] = useState('');
-    const [filtroFecha, setFiltroFecha] = useState('');
+const AlertasPanel = () => {
+  const [alertas, setAlertas] = useState([]);
+  const [filtros, setFiltros] = useState({
+    empleado: '',
+    fecha: '',
+    tipo: 'todas', // todas, criticas, moderadas, leves
+    estado: 'activas' // activas, archivadas, todas
+  });
+  const [operationLoading, setOperationLoading] = useState(null);
 
-    useEffect(() => {
-      const calcularAlertas = () => {
-        const alertasEncontradas = [];
-        const empleadosActivos = users.filter(u => u.role !== 'admin');
-        
-        // Generar fechas de los últimos 30 días
-        const fechas = [];
-        for (let i = 0; i < 30; i++) {
-          const fecha = new Date();
-          fecha.setDate(fecha.getDate() - i);
-          fechas.push(fecha.toISOString().split('T')[0]);
-        }
-
-        empleadosActivos.forEach(empleado => {
-          fechas.forEach(fecha => {
-            // No procesar fechas futuras
-            const hoy = new Date().toISOString().split('T')[0];
-            if (fecha > hoy) return;
-
-            // Excluir sábados y domingos
-            const fechaObj = new Date(fecha + 'T00:00:00');
-            const diaSemana = fechaObj.getDay();
-            if (diaSemana === 0 || diaSemana === 6) return;
-
-            // Calcular horas trabajadas en esta fecha
-            const tareasDelDia = tasks.filter(task => 
-              task.user_id === empleado.id && task.date === fecha
-            );
-            
-            const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
-            const horasObjetivo = empleado.horas_objetivo || 8;
-            const horasFaltantes = horasObjetivo - horasRegistradas;
-
-            // Solo crear alerta si faltan horas
-            if (horasFaltantes > 0 && horasRegistradas > 0) {
-              alertasEncontradas.push({
-                id: `${empleado.id}-${fecha}`,
-                empleado: empleado.name,
-                empleadoId: empleado.id,
-                fecha: fecha,
-                horasObjetivo: horasObjetivo,
-                horasRegistradas: horasRegistradas,
-                horasFaltantes: horasFaltantes,
-                departamento: empleado.department,
-                tipo: horasFaltantes >= 4 ? 'critica' : horasFaltantes >= 2 ? 'moderada' : 'leve'
-              });
-            } else if (horasRegistradas === 0 && fecha !== hoy) {
-              alertasEncontradas.push({
-                id: `${empleado.id}-${fecha}`,
-                empleado: empleado.name,
-                empleadoId: empleado.id,
-                fecha: fecha,
-                horasObjetivo: horasObjetivo,
-                horasRegistradas: 0,
-                horasFaltantes: horasObjetivo,
-                departamento: empleado.department,
-                tipo: 'critica'
-              });
-            }
-          });
-        });
-
-        // Ordenar por fecha (más recientes primero) y luego por severidad
-        alertasEncontradas.sort((a, b) => {
-          const fechaComparison = new Date(b.fecha) - new Date(a.fecha);
-          if (fechaComparison !== 0) return fechaComparison;
-          
-          const tipoOrden = { critica: 3, moderada: 2, leve: 1 };
-          return tipoOrden[b.tipo] - tipoOrden[a.tipo];
-        });
-
-        setAlertas(alertasEncontradas);
-      };
-
-      calcularAlertas();
-    }, [users, tasks]);
-
-    const alertasFiltradas = useMemo(() => {
-      return alertas.filter(alerta => {
-        if (filtroEmpleado && alerta.empleadoId !== parseInt(filtroEmpleado)) return false;
-        if (filtroFecha && alerta.fecha !== filtroFecha) return false;
-        return true;
-      });
-    }, [alertas, filtroEmpleado, filtroFecha]);
-
-    const estadisticas = useMemo(() => {
-      const total = alertasFiltradas.length;
-      const criticas = alertasFiltradas.filter(a => a.tipo === 'critica').length;
-      const moderadas = alertasFiltradas.filter(a => a.tipo === 'moderada').length;
-      const leves = alertasFiltradas.filter(a => a.tipo === 'leve').length;
+  useEffect(() => {
+    const calcularAlertas = () => {
+      const alertasEncontradas = [];
+      const empleadosActivos = users.filter(u => u.role !== 'admin');
       
-      return { total, criticas, moderadas, leves };
-    }, [alertasFiltradas]);
-
-    const formatearFecha = (fecha) => {
-      const date = new Date(fecha);
-      return date.toLocaleDateString('es-ES', { 
-        weekday: 'short', 
-        day: 'numeric', 
-        month: 'short',
-        year: 'numeric'
-      });
-    };
-
-    const getAlertaColor = (tipo) => {
-      switch (tipo) {
-        case 'critica': return 'border-red-200 bg-red-50';
-        case 'moderada': return 'border-orange-200 bg-orange-50';
-        case 'leve': return 'border-yellow-200 bg-yellow-50';
-        default: return 'border-gray-200 bg-gray-50';
+      // Generar fechas de los últimos 30 días
+      const fechas = [];
+      for (let i = 0; i < 30; i++) {
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() - i);
+        fechas.push(fecha.toISOString().split('T')[0]);
       }
-    };
 
-    const getAlertaIcon = (tipo) => {
-      switch (tipo) {
-        case 'critica': return <AlertTriangle className="text-red-600" size={20} />;
-        case 'moderada': return <AlertCircle className="text-orange-600" size={20} />;
-        case 'leve': return <Clock className="text-yellow-600" size={20} />;
-        default: return <AlertCircle className="text-gray-600" size={20} />;
-      }
-    };
+      empleadosActivos.forEach(empleado => {
+        fechas.forEach(fecha => {
+          // No procesar fechas futuras
+          const hoy = new Date().toISOString().split('T')[0];
+          if (fecha > hoy) return;
 
-    const getAlertaTipoTexto = (tipo) => {
-      switch (tipo) {
-        case 'critica': return 'Crítica';
-        case 'moderada': return 'Moderada';
-        case 'leve': return 'Leve';
-        default: return 'Normal';
-      }
-    };
+          // Excluir sábados y domingos
+          const fechaObj = new Date(fecha + 'T00:00:00');
+          const diaSemana = fechaObj.getDay();
+          if (diaSemana === 0 || diaSemana === 6) return;
 
-    return (
-      <div className="space-y-6">
-        <h2 className="text-xl font-semibold">Control de Alertas</h2>
-
-        {/* Resumen de alertas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Alertas</p>
-                <p className="text-2xl font-bold text-gray-800">{estadisticas.total}</p>
-              </div>
-              <div className="p-2 bg-gray-100 rounded-full">
-                <AlertCircle className="text-gray-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Críticas</p>
-                <p className="text-2xl font-bold text-red-600">{estadisticas.criticas}</p>
-              </div>
-              <div className="p-2 bg-red-100 rounded-full">
-                <AlertTriangle className="text-red-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Moderadas</p>
-                <p className="text-2xl font-bold text-orange-600">{estadisticas.moderadas}</p>
-              </div>
-              <div className="p-2 bg-orange-100 rounded-full">
-                <AlertCircle className="text-orange-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Leves</p>
-                <p className="text-2xl font-bold text-yellow-600">{estadisticas.leves}</p>
-              </div>
-              <div className="p-2 bg-yellow-100 rounded-full">
-                <Clock className="text-yellow-600" size={20} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Filtros */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h3 className="text-lg font-semibold mb-4">Filtros</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
-              <OptimizedSelect
-                value={filtroEmpleado}
-                onChange={(value) => setFiltroEmpleado(value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Todos los empleados</option>
-                {users.filter(u => u.role !== 'admin').map(user => (
-                  <option key={user.id} value={user.id}>{user.name}</option>
-                ))}
-              </OptimizedSelect>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha específica</label>
-              <OptimizedInput
-                type="date"
-                value={filtroFecha}
-                onChange={(value) => setFiltroFecha(value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de alertas */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h3 className="text-lg font-semibold mb-4">Incidencias Detectadas</h3>
+          // Calcular horas trabajadas en esta fecha
+          const tareasDelDia = tasks.filter(task => 
+            task.user_id === empleado.id && task.date === fecha
+          );
           
-          {alertasFiltradas.length === 0 ? (
-            <div className="text-center py-8">
-              <CheckCircle className="mx-auto mb-4 text-green-500" size={48} />
-              <h3 className="text-lg font-medium text-gray-700 mb-2">¡Excelente!</h3>
-              <p className="text-gray-600">No hay alertas pendientes con los filtros aplicados</p>
+          const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
+          const horasObjetivo = empleado.horas_objetivo || 8;
+          const horasFaltantes = horasObjetivo - horasRegistradas;
+
+          // Solo crear alerta si faltan horas
+          if (horasFaltantes > 0 && horasRegistradas > 0) {
+            alertasEncontradas.push({
+              id: `${empleado.id}-${fecha}`,
+              empleado: empleado.name,
+              empleadoId: empleado.id,
+              fecha: fecha,
+              horasObjetivo: horasObjetivo,
+              horasRegistradas: horasRegistradas,
+              horasFaltantes: horasFaltantes,
+              departamento: empleado.department,
+              tipo: horasFaltantes >= 4 ? 'critica' : horasFaltantes >= 2 ? 'moderada' : 'leve'
+            });
+          } else if (horasRegistradas === 0 && fecha !== hoy) {
+            alertasEncontradas.push({
+              id: `${empleado.id}-${fecha}`,
+              empleado: empleado.name,
+              empleadoId: empleado.id,
+              fecha: fecha,
+              horasObjetivo: horasObjetivo,
+              horasRegistradas: 0,
+              horasFaltantes: horasObjetivo,
+              departamento: empleado.department,
+              tipo: 'critica'
+            });
+          }
+        });
+      });
+
+      // Ordenar por fecha (más recientes primero) y luego por severidad
+      alertasEncontradas.sort((a, b) => {
+        const fechaComparison = new Date(b.fecha) - new Date(a.fecha);
+        if (fechaComparison !== 0) return fechaComparison;
+        
+        const tipoOrden = { critica: 3, moderada: 2, leve: 1 };
+        return tipoOrden[b.tipo] - tipoOrden[a.tipo];
+      });
+
+      setAlertas(alertasEncontradas);
+    };
+
+    calcularAlertas();
+  }, [users, tasks]);
+
+  // Filtrar alertas según los criterios seleccionados
+  const alertasFiltradas = useMemo(() => {
+    let alertasParaFiltrar = [];
+
+    // Determinar qué alertas mostrar según el estado
+    if (filtros.estado === 'activas') {
+      alertasParaFiltrar = alertas.filter(alerta => 
+        !alertasArchivadas.some(arch => arch.alert_id === alerta.id)
+      );
+    } else if (filtros.estado === 'archivadas') {
+      alertasParaFiltrar = alertasArchivadas.map(arch => ({
+        id: arch.alert_id,
+        empleado: arch.empleado_name,
+        empleadoId: arch.empleado_id,
+        fecha: arch.fecha,
+        horasObjetivo: arch.horas_objetivo,
+        horasRegistradas: arch.horas_registradas,
+        horasFaltantes: arch.horas_faltantes,
+        departamento: arch.departamento,
+        tipo: arch.tipo,
+        fechaArchivado: arch.archived_at,
+        archivedBy: arch.archived_by
+      }));
+    } else { // 'todas'
+      const activas = alertas.filter(alerta => 
+        !alertasArchivadas.some(arch => arch.alert_id === alerta.id)
+      );
+      const archivadas = alertasArchivadas.map(arch => ({
+        id: arch.alert_id,
+        empleado: arch.empleado_name,
+        empleadoId: arch.empleado_id,
+        fecha: arch.fecha,
+        horasObjetivo: arch.horas_objetivo,
+        horasRegistradas: arch.horas_registradas,
+        horasFaltantes: arch.horas_faltantes,
+        departamento: arch.departamento,
+        tipo: arch.tipo,
+        fechaArchivado: arch.archived_at,
+        archivedBy: arch.archived_by
+      }));
+      alertasParaFiltrar = [...activas, ...archivadas];
+    }
+
+    // Aplicar filtros adicionales
+    return alertasParaFiltrar.filter(alerta => {
+      if (filtros.empleado && alerta.empleadoId !== parseInt(filtros.empleado)) return false;
+      if (filtros.fecha && alerta.fecha !== filtros.fecha) return false;
+      if (filtros.tipo !== 'todas' && alerta.tipo !== filtros.tipo) return false;
+      return true;
+    });
+  }, [alertas, alertasArchivadas, filtros]);
+
+  // Estadísticas solo de alertas activas
+  const estadisticas = useMemo(() => {
+    const alertasActivas = alertas.filter(alerta => 
+      !alertasArchivadas.some(arch => arch.alert_id === alerta.id)
+    );
+    
+    const total = alertasActivas.length;
+    const criticas = alertasActivas.filter(a => a.tipo === 'critica').length;
+    const moderadas = alertasActivas.filter(a => a.tipo === 'moderada').length;
+    const leves = alertasActivas.filter(a => a.tipo === 'leve').length;
+    const archivadas = alertasArchivadas.length;
+    
+    return { total, criticas, moderadas, leves, archivadas };
+  }, [alertas, alertasArchivadas]);
+
+  // Función para archivar alerta usando base de datos
+  const manejarArchivarAlerta = async (alerta) => {
+    setOperationLoading(`archive-${alerta.id}`);
+    const result = await archivarAlerta(alerta, 'admin');
+    if (!result.success) {
+      console.error('Error archiving alert:', result.error);
+    }
+    setOperationLoading(null);
+  };
+
+  // Función para restaurar alerta usando base de datos
+  const manejarRestaurarAlerta = async (alertaId) => {
+    setOperationLoading(`restore-${alertaId}`);
+    const result = await restaurarAlerta(alertaId);
+    if (!result.success) {
+      console.error('Error restoring alert:', result.error);
+    }
+    setOperationLoading(null);
+  };
+
+  const formatearFecha = (fecha) => {
+    const date = new Date(fecha);
+    return date.toLocaleDateString('es-ES', { 
+      weekday: 'short', 
+      day: 'numeric', 
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const getAlertaColor = (tipo) => {
+    switch (tipo) {
+      case 'critica': return 'border-red-200 bg-red-50';
+      case 'moderada': return 'border-orange-200 bg-orange-50';
+      case 'leve': return 'border-yellow-200 bg-yellow-50';
+      default: return 'border-gray-200 bg-gray-50';
+    }
+  };
+
+  const getAlertaIcon = (tipo) => {
+    switch (tipo) {
+      case 'critica': return <AlertTriangle className="text-red-600" size={20} />;
+      case 'moderada': return <AlertCircle className="text-orange-600" size={20} />;
+      case 'leve': return <Clock className="text-yellow-600" size={20} />;
+      default: return <AlertCircle className="text-gray-600" size={20} />;
+    }
+  };
+
+  const getAlertaTipoTexto = (tipo) => {
+    switch (tipo) {
+      case 'critica': return 'Crítica';
+      case 'moderada': return 'Moderada';
+      case 'leve': return 'Leve';
+      default: return 'Normal';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold">Control de Alertas</h2>
+
+      {/* Resumen de alertas con archivadas */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Activas</p>
+              <p className="text-2xl font-bold text-gray-800">{estadisticas.total}</p>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {alertasFiltradas.slice(0, 10).map(alerta => (
-                <div key={alerta.id} className={`p-4 rounded-lg border-l-4 ${getAlertaColor(alerta.tipo)}`}>
+            <div className="p-2 bg-gray-100 rounded-full">
+              <AlertCircle className="text-gray-600" size={20} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Críticas</p>
+              <p className="text-2xl font-bold text-red-600">{estadisticas.criticas}</p>
+            </div>
+            <div className="p-2 bg-red-100 rounded-full">
+              <AlertTriangle className="text-red-600" size={20} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Moderadas</p>
+              <p className="text-2xl font-bold text-orange-600">{estadisticas.moderadas}</p>
+            </div>
+            <div className="p-2 bg-orange-100 rounded-full">
+              <AlertCircle className="text-orange-600" size={20} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Leves</p>
+              <p className="text-2xl font-bold text-yellow-600">{estadisticas.leves}</p>
+            </div>
+            <div className="p-2 bg-yellow-100 rounded-full">
+              <Clock className="text-yellow-600" size={20} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Archivadas</p>
+              <p className="text-2xl font-bold text-blue-600">{estadisticas.archivadas}</p>
+            </div>
+            <div className="p-2 bg-blue-100 rounded-full">
+              <CheckCircle className="text-blue-600" size={20} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtros mejorados */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4">Filtros</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+            <OptimizedSelect
+              value={filtros.estado}
+              onChange={(value) => setFiltros(prev => ({ ...prev, estado: value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="activas">Solo activas ({estadisticas.total})</option>
+              <option value="archivadas">Solo archivadas ({estadisticas.archivadas})</option>
+              <option value="todas">Todas las alertas</option>
+            </OptimizedSelect>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de alerta</label>
+            <OptimizedSelect
+              value={filtros.tipo}
+              onChange={(value) => setFiltros(prev => ({ ...prev, tipo: value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="todas">Todos los tipos</option>
+              <option value="critica">Solo críticas</option>
+              <option value="moderada">Solo moderadas</option>
+              <option value="leve">Solo leves</option>
+            </OptimizedSelect>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
+            <OptimizedSelect
+              value={filtros.empleado}
+              onChange={(value) => setFiltros(prev => ({ ...prev, empleado: value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Todos los empleados</option>
+              {users.filter(u => u.role !== 'admin').map(user => (
+                <option key={user.id} value={user.id}>{user.name}</option>
+              ))}
+            </OptimizedSelect>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha específica</label>
+            <OptimizedInput
+              type="date"
+              value={filtros.fecha}
+              onChange={(value) => setFiltros(prev => ({ ...prev, fecha: value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de alertas */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">
+            Incidencias Detectadas
+            {filtros.estado === 'archivadas' && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                (Archivadas)
+              </span>
+            )}
+          </h3>
+          <span className="text-sm text-gray-500">
+            Mostrando {alertasFiltradas.length} alertas
+          </span>
+        </div>
+        
+        {alertasFiltradas.length === 0 ? (
+          <div className="text-center py-8">
+            <CheckCircle className="mx-auto mb-4 text-green-500" size={48} />
+            <h3 className="text-lg font-medium text-gray-700 mb-2">
+              {filtros.estado === 'archivadas' ? 'Sin alertas archivadas' : 'Excelente trabajo'}
+            </h3>
+            <p className="text-gray-600">
+              {filtros.estado === 'archivadas' 
+                ? 'No tienes alertas archivadas con los filtros aplicados'
+                : 'No hay alertas pendientes con los filtros aplicados'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {alertasFiltradas.slice(0, 10).map(alerta => {
+              const estaArchivada = alertasArchivadas.some(arch => arch.alert_id === alerta.id);
+              const isLoading = operationLoading === `archive-${alerta.id}` || operationLoading === `restore-${alerta.id}`;
+              
+              return (
+                <div key={alerta.id} className={`p-4 rounded-lg border-l-4 ${getAlertaColor(alerta.tipo)} ${estaArchivada ? 'opacity-75' : ''}`}>
                   <div className="flex items-start space-x-3">
                     {getAlertaIcon(alerta.tipo)}
                     <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h4 className="font-medium text-gray-800">{alerta.empleado}</h4>
-                        <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                          alerta.tipo === 'critica' ? 'bg-red-100 text-red-800' :
-                          alerta.tipo === 'moderada' ? 'bg-orange-100 text-orange-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {getAlertaTipoTexto(alerta.tipo)}
-                        </span>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-medium text-gray-800">{alerta.empleado}</h4>
+                          <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                            alerta.tipo === 'critica' ? 'bg-red-100 text-red-800' :
+                            alerta.tipo === 'moderada' ? 'bg-orange-100 text-orange-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {getAlertaTipoTexto(alerta.tipo)}
+                          </span>
+                          {estaArchivada && (
+                            <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                              Archivada
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex space-x-2">
+                          {!estaArchivada ? (
+                            <button
+                              onClick={() => manejarArchivarAlerta(alerta)}
+                              disabled={isLoading}
+                              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 text-gray-700 text-xs rounded-md transition-colors flex items-center"
+                              title="Archivar alerta"
+                            >
+                              {isLoading ? (
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600 mr-1"></div>
+                              ) : (
+                                <CheckCircle size={14} className="mr-1" />
+                              )}
+                              Archivar
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => manejarRestaurarAlerta(alerta.id)}
+                              disabled={isLoading}
+                              className="px-3 py-1 bg-blue-100 hover:bg-blue-200 disabled:bg-blue-50 text-blue-700 text-xs rounded-md transition-colors flex items-center"
+                              title="Restaurar alerta"
+                            >
+                              {isLoading ? (
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></div>
+                              ) : (
+                                <AlertCircle size={14} className="mr-1" />
+                              )}
+                              Restaurar
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">{alerta.departamento}</p>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -2093,16 +2269,32 @@ const AdminPanel = memo(({
                           <div className="font-bold text-red-600">{alerta.horasFaltantes.toFixed(1)}h</div>
                         </div>
                       </div>
+                      {estaArchivada && alerta.fechaArchivado && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          Archivada el: {new Date(alerta.fechaArchivado).toLocaleDateString('es-ES')}
+                          {alerta.archivedBy && ` por ${alerta.archivedBy}`}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+            
+            {alertasFiltradas.length > 10 && (
+              <div className="text-center py-2">
+                <p className="text-sm text-gray-500">
+                  ... y {alertasFiltradas.length - 10} alertas más. 
+                  {filtros.estado === 'activas' && ' Usa los filtros para gestionar mejor las alertas.'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   const UserManagement = () => {
     const [newUser, setNewUser] = useState({
