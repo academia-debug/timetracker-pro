@@ -98,6 +98,7 @@ const useSupabaseData = () => {
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState({});
   const [diasJustificados, setDiasJustificados] = useState([]);
+  const [alertasArchivadas, setAlertasArchivadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
