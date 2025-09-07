@@ -1,3 +1,1438 @@
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle, Send, MessageSquare, FileText, ArrowRight, PlayCircle, CheckSquare } from 'lucide-react';
+
+// Configuración de Supabase
+const SUPABASE_URL = 'https://enpgabqnvggkzlqjhkfc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVucGdhYnFudmdna3pscWpoa2ZjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTM0NDA5MywiZXhwIjoyMDcwOTIwMDkzfQ.GEDptQUZfE0vLi38B6uOqhM-ORtmwjRO-GjfLsynLvs';
+
+// Cliente simple de Supabase
+class SupabaseClient {
+  constructor(url, key) {
+    this.url = url;
+    this.key = key;
+    this.headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'apikey': key
+    };
+  }
+
+  async request(endpoint, options = {}) {
+    const url = `${this.url}/rest/v1${endpoint}`;
+    const config = {
+      headers: {
+        ...this.headers,
+        'Prefer': 'return=representation'
+      },
+      ...options
+    };
+
+    try {
+      const response = await fetch(url, config);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      const hasContent = response.headers.get('content-length') !== '0';
+      
+      let data = null;
+      if (contentType?.includes('application/json') && hasContent) {
+        const text = await response.text();
+        if (text.trim()) {
+          data = JSON.parse(text);
+        }
+      }
+      
+      return { data, error: null };
+    } catch (error) {
+      console.error('Supabase request error:', error);
+      return { data: null, error };
+    }
+  }
+
+  async select(table, query = '*') {
+    return this.request(`/${table}?select=${query}`);
+  }
+
+  async insert(table, data) {
+    return this.request(`/${table}`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async update(table, data, filter) {
+    return this.request(`/${table}?${filter}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async delete(table, filter) {
+    return this.request(`/${table}?${filter}`, {
+      method: 'DELETE'
+    });
+  }
+}
+
+const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Datos iniciales para setup
+const departments = ['Marketing', 'Ventas', 'Atención al Cliente', 'Administración', 'Edición', 'Equipo Docente'];
+
+const initialCategories = {
+  'Marketing': ['SEO', 'SEM', 'Redes Sociales', 'Contenido'],
+  'Ventas': ['Prospección', 'Reuniones', 'Cierre', 'Seguimiento'],
+  'Atención al Cliente': ['Soporte', 'Reclamaciones', 'Consultas'],
+  'Administración': ['Finanzas', 'RRHH', 'Legal'],
+  'Edición': ['Diseño', 'Redacción', 'Revisión'],
+  'Equipo Docente': ['Clases', 'Preparación', 'Evaluación']
+};
+
+// Hook para manejo de datos con Supabase
+const useSupabaseData = () => {
+  const [users, setUsers] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [categories, setCategories] = useState({});
+  const [diasJustificados, setDiasJustificados] = useState([]);
+  const [alertasArchivadas, setAlertasArchivadas] = useState([]);
+  const [assignedTasks, setAssignedTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Inicializar datos
+  const initializeData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Verificar si hay usuarios
+      const { data: existingUsers } = await supabase.select('users');
+      
+      if (!existingUsers || existingUsers.length === 0) {
+        // Crear usuarios iniciales
+        const initialUsers = [
+          { 
+            username: 'juan', 
+            password: 'abc123', 
+            name: 'Juan Pérez', 
+            email: 'juan@empresa.com', 
+            department: 'Marketing', 
+            horas_objetivo: 8, 
+            hora_inicio: '09:00' 
+          },
+          { 
+            username: 'maria', 
+            password: 'def456', 
+            name: 'María García', 
+            email: 'maria@empresa.com', 
+            department: 'Ventas', 
+            horas_objetivo: 7.5, 
+            hora_inicio: '08:30' 
+          },
+          { 
+            username: 'admin', 
+            password: 'admin1', 
+            name: 'Administrador', 
+            email: 'admin@empresa.com', 
+            department: 'Administración', 
+            horas_objetivo: 8, 
+            hora_inicio: '09:00', 
+            role: 'admin' 
+          },
+          { 
+            username: 'carlos', 
+            password: 'demo123', 
+            name: 'Carlos Martín', 
+            email: 'carlos@empresa.com', 
+            department: 'Marketing', 
+            horas_objetivo: 8, 
+            hora_inicio: '09:00' 
+          }
+        ];
+
+        await supabase.insert('users', initialUsers);
+        
+        // Crear categorías iniciales
+        const categoryInserts = [];
+        Object.entries(initialCategories).forEach(([dept, cats]) => {
+          cats.forEach(cat => {
+            categoryInserts.push({ department: dept, name: cat });
+          });
+        });
+        
+        await supabase.insert('categories', categoryInserts);
+
+        // Crear tareas demo para Carlos
+        const carlosUser = await supabase.select('users', '*').then(res => 
+          res.data?.find(u => u.username === 'carlos')
+        );
+
+        if (carlosUser) {
+          const demoTasks = [
+            { 
+              user_id: carlosUser.id, 
+              description: 'Optimización SEO página principal', 
+              category: 'SEO', 
+              hours: 2.5, 
+              date: new Date().toISOString().split('T')[0], 
+              horario: '09:00-11:30' 
+            },
+            { 
+              user_id: carlosUser.id, 
+              description: 'Campaña SEM Google Ads', 
+              category: 'SEM', 
+              hours: 2, 
+              date: new Date().toISOString().split('T')[0], 
+              horario: '11:30-13:30' 
+            },
+            { 
+              user_id: carlosUser.id, 
+              description: 'Análisis keywords competencia', 
+              category: 'SEO', 
+              hours: 3, 
+              date: new Date(Date.now() - 86400000).toISOString().split('T')[0], 
+              horario: '09:00-12:00' 
+            }
+          ];
+
+          await supabase.insert('tasks', demoTasks);
+        }
+      }
+
+      // Cargar todos los datos
+      await loadAllData();
+      
+    } catch (err) {
+      console.error('Error initializing data:', err);
+      setError('Error al inicializar la aplicación');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Cargar todos los datos
+  const loadAllData = useCallback(async () => {
+    try {
+      const [usersRes, tasksRes, categoriesRes, justifiedRes, archivedRes, assignedRes] = await Promise.all([
+        supabase.select('users'),
+        supabase.select('tasks'),
+        supabase.select('categories'),
+        supabase.select('justified_days'),
+        supabase.select('archived_alerts'),
+        supabase.select('assigned_tasks')
+      ]);
+      
+      if (usersRes.data) setUsers(usersRes.data);
+      if (tasksRes.data) setTasks(tasksRes.data);
+      if (justifiedRes.data) setDiasJustificados(justifiedRes.data);
+      if (archivedRes.data) setAlertasArchivadas(archivedRes.data);
+      if (assignedRes.data) setAssignedTasks(assignedRes.data);
+
+      // Procesar categorías
+      if (categoriesRes.data) {
+        const categoriesObj = {};
+        categoriesRes.data.forEach(cat => {
+          if (!categoriesObj[cat.department]) {
+            categoriesObj[cat.department] = [];
+          }
+          categoriesObj[cat.department].push(cat.name);
+        });
+        setCategories(categoriesObj);
+      }
+
+    } catch (err) {
+      console.error('Error loading data:', err);
+      setError('Error al cargar los datos');
+    }
+  }, []);
+
+  // Funciones CRUD para usuarios
+  const createUser = useCallback(async (userData) => {
+    try {
+      const { data, error } = await supabase.insert('users', userData);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const updateUser = useCallback(async (userId, userData) => {
+    try {
+      const { data, error } = await supabase.update('users', userData, `id=eq.${userId}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const deleteUser = useCallback(async (userId) => {
+    try {
+      const { data, error } = await supabase.delete('users', `id=eq.${userId}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  // Funciones CRUD para tareas
+  const createTask = useCallback(async (taskData) => {
+    try {
+      console.log('🚀 Creando tarea:', taskData);
+      const { data, error } = await supabase.insert('tasks', taskData);
+      if (error) {
+        console.error('❌ Error creando tarea:', error);
+        throw error;
+      }
+      console.log('✅ Tarea creada exitosamente:', data);
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      console.error('❌ Error en createTask:', err);
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const updateTask = useCallback(async (taskId, taskData) => {
+    try {
+      const { data, error } = await supabase.update('tasks', taskData, `id=eq.${taskId}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const deleteTask = useCallback(async (taskId) => {
+    try {
+      const { data, error } = await supabase.delete('tasks', `id=eq.${taskId}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  // Funciones CRUD para tareas asignadas
+  const createAssignedTask = useCallback(async (taskData) => {
+    try {
+      const { data, error } = await supabase.insert('assigned_tasks', taskData);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const updateAssignedTask = useCallback(async (taskId, taskData) => {
+    try {
+      const { data, error } = await supabase.update('assigned_tasks', taskData, `id=eq.${taskId}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const deleteAssignedTask = useCallback(async (taskId) => {
+    try {
+      const { data, error } = await supabase.delete('assigned_tasks', `id=eq.${taskId}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  // Funciones para categorías
+  const createCategory = useCallback(async (department, name) => {
+    try {
+      const { data, error } = await supabase.insert('categories', { department, name });
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const deleteCategoryFromDB = useCallback(async (department, name) => {
+    try {
+      const { data, error } = await supabase.delete('categories', `department=eq.${department}&name=eq.${name}`);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  // Funciones para días justificados
+  const createJustifiedDay = useCallback(async (justificationData) => {
+    try {
+      const { data, error } = await supabase.insert('justified_days', justificationData);
+      if (error) throw error;
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  // Funciones para alertas archivadas
+  const archivarAlerta = useCallback(async (alerta, archivedBy = 'admin') => {
+    try {
+      const alertData = {
+        alert_id: alerta.id,
+        empleado_id: alerta.empleadoId,
+        empleado_name: alerta.empleado,
+        fecha: alerta.fecha,
+        tipo: alerta.tipo,
+        horas_objetivo: alerta.horasObjetivo,
+        horas_registradas: alerta.horasRegistradas,
+        horas_faltantes: alerta.horasFaltantes,
+        departamento: alerta.departamento,
+        archived_by: archivedBy
+      };
+
+      const { data, error } = await supabase.insert('archived_alerts', alertData);
+      if (error) throw error;
+      
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      console.error('Error archiving alert:', err);
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  const restaurarAlerta = useCallback(async (alertId) => {
+    try {
+      const { data, error } = await supabase.delete('archived_alerts', `alert_id=eq.${alertId}`);
+      if (error) throw error;
+      
+      await loadAllData();
+      return { success: true };
+    } catch (err) {
+      console.error('Error restoring alert:', err);
+      return { success: false, error: err.message };
+    }
+  }, [loadAllData]);
+
+  useEffect(() => {
+    initializeData();
+  }, [initializeData]);
+
+  return {
+    users,
+    tasks,
+    categories,
+    diasJustificados,
+    alertasArchivadas,
+    assignedTasks,
+    loading,
+    error,
+    createUser,
+    updateUser,
+    deleteUser,
+    createTask,
+    updateTask,
+    deleteTask,
+    createAssignedTask,
+    updateAssignedTask,
+    deleteAssignedTask,
+    createCategory,
+    deleteCategoryFromDB,
+    createJustifiedDay,
+    archivarAlerta,
+    restaurarAlerta,
+    loadAllData
+  };
+};
+// Componente Input optimizado para evitar pérdida de foco
+const OptimizedInput = memo(({ value, onChange, placeholder, type = 'text', className = '', ...props }) => {
+  const handleChange = useCallback((e) => {
+    onChange(e.target.value);
+  }, [onChange]);
+
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={handleChange}
+      placeholder={placeholder}
+      className={className}
+      {...props}
+    />
+  );
+});
+
+// Componente Select optimizado
+const OptimizedSelect = memo(({ value, onChange, children, className = '', ...props }) => {
+  const handleChange = useCallback((e) => {
+    onChange(e.target.value);
+  }, [onChange]);
+
+  return (
+    <select
+      value={value}
+      onChange={handleChange}
+      className={className}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+});
+
+// Componente de Loading
+const LoadingSpinner = () => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+      <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+        <Clock className="text-white text-2xl animate-spin" />
+      </div>
+      <h1 className="text-2xl font-bold text-gray-800 mb-2">TimeTracker Pro</h1>
+      <p className="text-gray-600">Cargando aplicación...</p>
+      <div className="mt-4">
+        <div className="animate-pulse bg-gray-200 h-2 rounded-full"></div>
+      </div>
+    </div>
+  </div>
+);
+
+// Componente Error
+const ErrorDisplay = ({ error, onRetry }) => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+      <div className="bg-red-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+        <AlertTriangle className="text-white text-2xl" />
+      </div>
+      <h1 className="text-2xl font-bold text-gray-800 mb-2">Error</h1>
+      <p className="text-gray-600 mb-4">{error}</p>
+      <button
+        onClick={onRetry}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
+      >
+        Reintentar
+      </button>
+    </div>
+  </div>
+);
+
+// Componente Login
+const Login = memo(({ onLogin, loginError, users }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const displayError = loginError || error;
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    
+    if (username.length === 0 || password.length === 0) {
+      setError('Por favor, complete todos los campos');
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      await onLogin(username, password);
+    } catch (err) {
+      setError('Error al iniciar sesión');
+    } finally {
+      setLoading(false);
+    }
+  }, [username, password, onLogin]);
+
+  const handleUsernameChange = useCallback((value) => {
+    setUsername(value);
+    if (displayError) setError('');
+  }, [displayError]);
+
+  const handlePasswordChange = useCallback((value) => {
+    setPassword(value);
+    if (displayError) setError('');
+  }, [displayError]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Clock className="text-white text-2xl" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-800">TimeTracker Pro</h1>
+          <p className="text-gray-600 mt-2">Gestión de tiempo laboral</p>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Usuario</label>
+            <OptimizedInput
+              value={username}
+              onChange={handleUsernameChange}
+              placeholder="Ingrese su usuario"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              autoComplete="username"
+              disabled={loading}
+              onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
+            <div className="relative">
+              <OptimizedInput
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={handlePasswordChange}
+                placeholder="Ingrese su contraseña"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pr-12"
+                autoComplete="current-password"
+                disabled={loading}
+                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                disabled={loading}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+          </div>
+
+          {displayError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center">
+              <AlertTriangle className="mr-2 text-red-600" size={20} />
+              <div>
+                <p className="font-medium">Error de acceso</p>
+                <p className="text-sm">{displayError}</p>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center"
+          >
+            {loading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Iniciando sesión...
+              </>
+            ) : (
+              'Iniciar Sesión'
+            )}
+          </button>
+        </div>
+
+        <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+          <p className="text-sm text-gray-600 mb-2">Usuarios de prueba:</p>
+          <div className="text-xs space-y-1">
+            <div>• juan / abc123</div>
+            <div>• maria / def456</div>
+            <div>• carlos / demo123</div>
+            <div>• admin / admin1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Componente Temporizador
+const Timer = memo(({ task, onUpdate, isActive, onToggle }) => {
+  const [seconds, setSeconds] = useState(0);
+  const [lastUpdateTime, setLastUpdateTime] = useState(0);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const interval = setInterval(() => {
+      setSeconds(prev => {
+        const newSeconds = prev + 1;
+        const totalMinutes = Math.floor(newSeconds / 60);
+        
+        // Solo actualizar cada 30 minutos (0.5 horas)
+        if (totalMinutes > 0 && totalMinutes % 30 === 0 && totalMinutes !== lastUpdateTime) {
+          const hours = newSeconds / 3600;
+          onUpdate(task.id, hours);
+          setLastUpdateTime(totalMinutes);
+        }
+        
+        return newSeconds;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isActive, task.id, onUpdate, lastUpdateTime]);
+
+  const handleToggle = useCallback(() => {
+    if (isActive) {
+      // Al pausar, actualizar inmediatamente las horas
+      const hours = seconds / 3600;
+      onUpdate(task.id, hours);
+    }
+    onToggle(task.id);
+  }, [isActive, seconds, task.id, onUpdate, onToggle]);
+
+  const formatTime = useCallback((totalSeconds) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  return (
+    <div className="flex items-center space-x-3">
+      <div className={`font-mono text-lg font-bold ${isActive ? 'text-green-600' : 'text-gray-600'}`}>
+        {formatTime(seconds)}
+      </div>
+      <button
+        onClick={handleToggle}
+        className={`p-2 rounded-full transition-colors ${
+          isActive 
+            ? 'bg-red-100 hover:bg-red-200 text-red-600' 
+            : 'bg-green-100 hover:bg-green-200 text-green-600'
+        }`}
+      >
+        {isActive ? <Pause size={16} /> : <Play size={16} />}
+      </button>
+    </div>
+  );
+});
+
+// Componente Tareas Asignadas para Empleados
+const TareasAsignadas = memo(({ user, assignedTasks, updateAssignedTask }) => {
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [employeeComment, setEmployeeComment] = useState('');
+
+  const userAssignedTasks = useMemo(() => 
+    assignedTasks.filter(task => task.assigned_to === user.id), 
+    [assignedTasks, user.id]
+  );
+
+  const pendingTasks = useMemo(() => 
+    userAssignedTasks.filter(task => task.status === 'pendiente'), 
+    [userAssignedTasks]
+  );
+
+  const inProgressTasks = useMemo(() => 
+    userAssignedTasks.filter(task => task.status === 'en_progreso'), 
+    [userAssignedTasks]
+  );
+
+  const completedTasks = useMemo(() => 
+    userAssignedTasks.filter(task => task.status === 'completada'), 
+    [userAssignedTasks]
+  );
+
+  const handleStartTask = useCallback(async (task) => {
+    await updateAssignedTask(task.id, { status: 'en_progreso' });
+  }, [updateAssignedTask]);
+
+  const handleCompleteTask = useCallback(async (task) => {
+    const updateData = {
+      status: 'completada',
+      completed_at: new Date().toISOString(),
+      employee_comments: employeeComment.trim() || null
+    };
+    
+    await updateAssignedTask(task.id, updateData);
+    setSelectedTask(null);
+    setEmployeeComment('');
+  }, [updateAssignedTask, employeeComment]);
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'alta': return 'bg-red-100 text-red-800 border-red-200';
+      case 'media': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'baja': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Sin fecha límite';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', { 
+      day: 'numeric', 
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  if (userAssignedTasks.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <Send className="mr-2" size={20} />
+          Tareas Asignadas
+        </h3>
+        <div className="text-center py-4">
+          <Send className="mx-auto mb-3 text-gray-400" size={32} />
+          <p className="text-gray-600">No tienes tareas asignadas por el momento</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center">
+        <Send className="mr-2" size={20} />
+        Tareas Asignadas
+        <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
+          {userAssignedTasks.length}
+        </span>
+      </h3>
+
+      <div className="space-y-6">
+        {/* Tareas Pendientes */}
+        {pendingTasks.length > 0 && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <Clock className="mr-2 text-gray-500" size={16} />
+              Pendientes ({pendingTasks.length})
+            </h4>
+            <div className="space-y-3">
+              {pendingTasks.map(task => (
+                <div key={task.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="flex items-start justify-between mb-2">
+                    <h5 className="font-medium text-gray-800">{task.title}</h5>
+                    <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(task.priority)}`}>
+                      {task.priority?.charAt(0).toUpperCase() + task.priority?.slice(1)}
+                    </span>
+                  </div>
+                  {task.description && (
+                    <p className="text-gray-600 text-sm mb-3">{task.description}</p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">
+                      Fecha límite: {formatDate(task.due_date)}
+                    </span>
+                    <button
+                      onClick={() => handleStartTask(task)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm flex items-center transition-colors"
+                    >
+                      <PlayCircle className="mr-2" size={16} />
+                      Iniciar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tareas En Progreso */}
+        {inProgressTasks.length > 0 && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <Activity className="mr-2 text-blue-500" size={16} />
+              En Progreso ({inProgressTasks.length})
+            </h4>
+            <div className="space-y-3">
+              {inProgressTasks.map(task => (
+                <div key={task.id} className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                  <div className="flex items-start justify-between mb-2">
+                    <h5 className="font-medium text-gray-800">{task.title}</h5>
+                    <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(task.priority)}`}>
+                      {task.priority?.charAt(0).toUpperCase() + task.priority?.slice(1)}
+                    </span>
+                  </div>
+                  {task.description && (
+                    <p className="text-gray-600 text-sm mb-3">{task.description}</p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">
+                      Fecha límite: {formatDate(task.due_date)}
+                    </span>
+                    <button
+                      onClick={() => setSelectedTask(task)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm flex items-center transition-colors"
+                    >
+                      <CheckSquare className="mr-2" size={16} />
+                      Completar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tareas Completadas */}
+        {completedTasks.length > 0 && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <CheckCircle className="mr-2 text-green-500" size={16} />
+              Completadas Recientes ({Math.min(completedTasks.length, 3)})
+            </h4>
+            <div className="space-y-3">
+              {completedTasks.slice(0, 3).map(task => (
+                <div key={task.id} className="border border-green-200 rounded-lg p-4 bg-green-50">
+                  <div className="flex items-start justify-between mb-2">
+                    <h5 className="font-medium text-gray-800">{task.title}</h5>
+                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                      Completada
+                    </span>
+                  </div>
+                  {task.completed_at && (
+                    <p className="text-gray-600 text-sm">
+                      Completada el: {formatDate(task.completed_at)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal para completar tarea */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <CheckSquare className="text-green-600 mr-3" size={24} />
+              <h3 className="text-lg font-semibold text-gray-800">Completar Tarea</h3>
+            </div>
+            
+            <div className="mb-4">
+              <h4 className="font-medium text-gray-800 mb-2">{selectedTask.title}</h4>
+              {selectedTask.description && (
+                <p className="text-gray-600 text-sm mb-3">{selectedTask.description}</p>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Comentarios (opcional)
+              </label>
+              <textarea
+                value={employeeComment}
+                onChange={(e) => setEmployeeComment(e.target.value)}
+                placeholder="Describe cómo completaste la tarea, resultados obtenidos, etc..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md h-20 resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="flex space-x-3 justify-end">
+              <button
+                onClick={() => {
+                  setSelectedTask(null);
+                  setEmployeeComment('');
+                }}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md transition-colors duration-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleCompleteTask(selectedTask)}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors duration-200"
+              >
+                Marcar como Completada
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+// Componente Avisos para empleados
+const AvisosEmpleado = memo(({ user, tasks, diasJustificados, createJustifiedDay }) => {
+  const [avisos, setAvisos] = useState([]);
+
+  useEffect(() => {
+    const calcularAvisos = () => {
+      const avisosEncontrados = [];
+      
+      // Generar fechas de los últimos 15 días
+      const fechas = [];
+      for (let i = 1; i < 15; i++) {
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() - i);
+        fechas.push(fecha.toISOString().split('T')[0]);
+      }
+
+      fechas.forEach(fecha => {
+        // Excluir sábados y domingos
+        const fechaObj = new Date(fecha + 'T00:00:00');
+        const diaSemana = fechaObj.getDay();
+        if (diaSemana === 0 || diaSemana === 6) return;
+
+        // Calcular horas trabajadas en esta fecha
+        const tareasDelDia = tasks.filter(task => 
+          task.user_id === user.id && task.date === fecha
+        );
+        
+        const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
+        const horasObjetivo = user.horas_objetivo || 8;
+        const horasFaltantes = horasObjetivo - horasRegistradas;
+
+        // Crear aviso si faltan horas
+        if (horasFaltantes > 0) {
+          avisosEncontrados.push({
+            id: `${user.id}-${fecha}`,
+            fecha: fecha,
+            horasObjetivo: horasObjetivo,
+            horasRegistradas: horasRegistradas,
+            horasFaltantes: horasFaltantes,
+            tipo: horasRegistradas === 0 ? 'sin-registro' : 'incompleto',
+            tareasExistentes: tareasDelDia.length
+          });
+        }
+      });
+
+      // Ordenar por fecha (más recientes primero)
+      avisosEncontrados.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+      setAvisos(avisosEncontrados);
+    };
+
+    calcularAvisos();
+  }, [user, tasks]);
+
+  const formatearFecha = (fecha) => {
+    const date = new Date(fecha + 'T00:00:00');
+    const hoy = new Date();
+    const ayer = new Date();
+    ayer.setDate(hoy.getDate() - 1);
+    
+    const fechaStr = fecha;
+    const hoyStr = hoy.toISOString().split('T')[0];
+    const ayerStr = ayer.toISOString().split('T')[0];
+    
+    if (fechaStr === hoyStr) return 'Hoy';
+    if (fechaStr === ayerStr) return 'Ayer';
+    
+    return date.toLocaleDateString('es-ES', { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'short'
+    });
+  };
+
+  const getAvisoColor = (tipo) => {
+    return tipo === 'sin-registro' 
+      ? 'border-red-200 bg-red-50' 
+      : 'border-orange-200 bg-orange-50';
+  };
+
+  const getAvisoIcon = (tipo) => {
+    return tipo === 'sin-registro' 
+      ? <AlertTriangle className="text-red-600" size={18} />
+      : <Clock className="text-orange-600" size={18} />;
+  };
+
+  const justificarDia = useCallback(async (aviso) => {
+    const justificationData = {
+      empleado_id: user.id,
+      fecha: aviso.fecha,
+      motivo: 'Vacaciones o Festivo',
+      fecha_justificacion: new Date().toISOString()
+    };
+    
+    await createJustifiedDay(justificationData);
+  }, [user.id, createJustifiedDay]);
+
+  const avisosValidos = useMemo(() => {
+    return avisos.filter(aviso => 
+      !diasJustificados.some(justif => 
+        justif.empleado_id === user.id && justif.fecha === aviso.fecha
+      )
+    );
+  }, [avisos, diasJustificados, user.id]);
+
+  if (avisosValidos.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <CheckCircle className="mr-2 text-green-600" size={20} />
+          Avisos
+        </h3>
+        <div className="text-center py-4">
+          <CheckCircle className="mx-auto mb-3 text-green-500" size={32} />
+          <p className="text-green-600 font-medium">¡Excelente trabajo!</p>
+          <p className="text-gray-600 text-sm">Tienes todos tus registros al día</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center">
+        <AlertTriangle className="mr-2 text-orange-600" size={20} />
+        Avisos
+        <span className="ml-2 bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">
+          {avisosValidos.length}
+        </span>
+      </h3>
+      
+      <div className="space-y-3">
+        {avisosValidos.slice(0, 5).map(aviso => (
+          <div key={aviso.id} className={`p-4 rounded-lg border-l-4 ${getAvisoColor(aviso.tipo)}`}>
+            <div className="flex items-start space-x-3">
+              {getAvisoIcon(aviso.tipo)}
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-gray-800">
+                    {formatearFecha(aviso.fecha)}
+                  </h4>
+                  <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                    aviso.tipo === 'sin-registro' 
+                      ? 'bg-red-100 text-red-800' 
+                      : 'bg-orange-100 text-orange-800'
+                  }`}>
+                    {aviso.tipo === 'sin-registro' ? 'Sin registro' : 'Incompleto'}
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Registrado:</span>
+                    <div className="font-medium">{aviso.horasRegistradas}h de {aviso.horasObjetivo}h</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Faltan:</span>
+                    <div className="font-bold text-red-600">{aviso.horasFaltantes.toFixed(1)}h</div>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <button
+                    onClick={() => justificarDia(aviso)}
+                    className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 text-sm rounded-md transition-colors border border-blue-200"
+                  >
+                    🗓️ Marcar como "Vacaciones o Festivo"
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {avisosValidos.length > 5 && (
+          <div className="text-center py-2">
+            <p className="text-sm text-gray-500">
+              ... y {avisosValidos.length - 5} avisos más. Completa estos primero.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// Panel de empleado
+const EmployeePanel = memo(({ 
+  user, 
+  categories, 
+  tasks, 
+  diasJustificados, 
+  assignedTasks,
+  createTask, 
+  updateTask, 
+  deleteTask, 
+  createCategory, 
+  createJustifiedDay,
+  updateAssignedTask
+}) => {
+  const [newTask, setNewTask] = useState({ 
+    description: '', 
+    category: '', 
+    hours: '', 
+    date: new Date().toISOString().split('T')[0] 
+  });
+  const [editingTask, setEditingTask] = useState(null);
+  const [activeTimer, setActiveTimer] = useState(null);
+  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState(null);
+  const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [taskError, setTaskError] = useState('');
+  const [taskSuccess, setTaskSuccess] = useState('');
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  const userCategories = useMemo(() => categories[user.department] || [], [categories, user.department]);
+  
+  const todayTasks = useMemo(() => 
+    tasks.filter(task => 
+      task.user_id === user.id && 
+      task.date === new Date().toISOString().split('T')[0]
+    ), [tasks, user.id]
+  );
+
+  const totalHours = useMemo(() => 
+    todayTasks.reduce((sum, task) => sum + task.hours, 0), 
+    [todayTasks]
+  );
+
+  // Función para calcular el siguiente horario
+  const calculateNextHorario = useCallback((hours, date) => {
+    const tasksForDate = tasks.filter(task => 
+      task.user_id === user.id && task.date === date
+    );
+
+    if (tasksForDate.length === 0) {
+      // Primera tarea del día
+      const start = user.hora_inicio || '09:00';
+      const startTime = new Date(`2000-01-01T${start}:00`);
+      const endTime = new Date(startTime);
+      endTime.setHours(endTime.getHours() + Math.floor(hours));
+      endTime.setMinutes(endTime.getMinutes() + (hours % 1) * 60);
+      return `${start}-${endTime.toTimeString().slice(0, 5)}`;
+    }
+
+    // Continuar desde la última tarea
+    const sortedTasks = tasksForDate.sort((a, b) => a.id - b.id);
+    const lastTask = sortedTasks[sortedTasks.length - 1];
+    const lastEndTime = lastTask.horario ? lastTask.horario.split('-')[1] : '09:00';
+    
+    const startTime = new Date(`2000-01-01T${lastEndTime}:00`);
+    const endTime = new Date(startTime);
+    endTime.setHours(endTime.getHours() + Math.floor(hours));
+    endTime.setMinutes(endTime.getMinutes() + (hours % 1) * 60);
+    
+    return `${lastEndTime}-${endTime.toTimeString().slice(0, 5)}`;
+  }, [tasks, user.id, user.hora_inicio]);
+
+  const handleAddTask = useCallback(async () => {
+    // Limpiar errores y estados previos
+    setTaskError('');
+    setTaskSuccess('');
+    setIsCreatingTask(true);
+
+    try {
+      // Validaciones
+      if (!newTask.description.trim()) {
+        setTaskError('La descripción de la tarea es obligatoria');
+        return;
+      }
+      
+      if (!newTask.category) {
+        setTaskError('Debe seleccionar una categoría');
+        return;
+      }
+      
+      if (!newTask.hours || isNaN(newTask.hours) || parseFloat(newTask.hours) <= 0) {
+        setTaskError('Las horas deben ser un número válido mayor a 0');
+        return;
+      }
+      
+      if (!newTask.date) {
+        setTaskError('La fecha es obligatoria');
+        return;
+      }
+
+      const hours = parseFloat(newTask.hours);
+      
+      if (hours > 12) {
+        setTaskError('No se pueden registrar más de 12 horas para una tarea');
+        return;
+      }
+
+      // Preparar datos de la tarea
+      const taskData = {
+        user_id: user.id,
+        description: newTask.description.trim(),
+        category: newTask.category,
+        hours: hours,
+        date: newTask.date,
+        horario: calculateNextHorario(hours, newTask.date)
+      };
+
+      console.log('📋 Enviando tarea a Supabase:', taskData);
+
+      // Crear la tarea
+      const result = await createTask(taskData);
+      
+      if (result.success) {
+        console.log('✅ Tarea creada exitosamente');
+        setTaskSuccess(`Tarea "${newTask.description.trim()}" creada exitosamente`);
+        
+        // Limpiar formulario
+        setNewTask({ 
+          description: '', 
+          category: '', 
+          hours: '', 
+          date: new Date().toISOString().split('T')[0] 
+        });
+        
+        // Limpiar mensaje de éxito después de 3 segundos
+        setTimeout(() => {
+          setTaskSuccess('');
+        }, 3000);
+      } else {
+        console.error('❌ Error creando tarea:', result.error);
+        setTaskError(`Error al crear la tarea: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Error inesperado:', error);
+      setTaskError('Error inesperado al crear la tarea');
+    } finally {
+      setIsCreatingTask(false);
+    }
+  }, [newTask, user.id, calculateNextHorario, createTask]);
+
+  const handleEditTask = useCallback((task) => {
+    setEditingTask({ ...task });
+  }, []);
+
+  const handleUpdateTask = useCallback(async () => {
+    if (!editingTask.description || !editingTask.category || !editingTask.hours) return;
+
+    const result = await updateTask(editingTask.id, {
+      description: editingTask.description,
+      category: editingTask.category,
+      hours: editingTask.hours
+    });
+    
+    if (result.success) {
+      setEditingTask(null);
+    }
+  }, [editingTask, updateTask]);
+
+  const handleDeleteTask = useCallback((taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    setDeleteTaskConfirm(task);
+  }, [tasks]);
+
+  const confirmDeleteTask = useCallback(async () => {
+    if (deleteTaskConfirm) {
+      await deleteTask(deleteTaskConfirm.id);
+      setDeleteTaskConfirm(null);
+    }
+  }, [deleteTaskConfirm, deleteTask]);
+
+  const cancelDeleteTask = useCallback(() => {
+    setDeleteTaskConfirm(null);
+  }, []);
+
+  const handleTimerUpdate = useCallback(async (taskId, hours) => {
+    await updateTask(taskId, { hours });
+  }, [updateTask]);
+
+  const handleTimerToggle = useCallback((taskId) => {
+    setActiveTimer(prev => prev === taskId ? null : taskId);
+  }, []);
+
+  const handleCreateCategory = useCallback(async () => {
+    const trimmedName = newCategoryName.trim();
+    
+    if (!trimmedName) return;
+    
+    const result = await createCategory(user.department, trimmedName);
+    if (result.success) {
+      setNewTask(prev => ({ ...prev, category: trimmedName }));
+      setNewCategoryName('');
+      setShowNewCategoryModal(false);
+    }
+  }, [newCategoryName, user.department, createCategory]);
+
+  return (
+    <div className="space-y-6">
+      {/* Información del Empleado */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <User className="mr-2" size={20} />
+          {user.name}
+        </h3>
+        <div className="flex items-center text-sm">
+          <Building className="mr-2 text-gray-500" size={16} />
+          <span className="text-gray-600">Departamento:</span>
+          <span className="ml-2 font-medium text-gray-800">{user.department}</span>
+        </div>
+      </div>
+
+      {/* Tareas Asignadas */}
+      <TareasAsignadas 
+        user={user}
+        assignedTasks={assignedTasks}
+        updateAssignedTask={updateAssignedTask}
+      />
+
+      {/* Formulario nueva tarea */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <Plus className="mr-2" size={20} />
+          Nueva Tarea
+        </h3>
+
+        {/* Mensajes de feedback */}
+        {taskError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+            <div className="flex items-center">
+              <AlertTriangle className="mr-2" size={16} />
+              <span className="font-medium">Error:</span>
+            </div>
+            <p className="text-sm mt-1">{taskError}</p>
+          </div>
+        )}
+        
+        {taskSuccess && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+            <div className="flex items-center">
+              <CheckCircle className="mr-2" size={16} />
+              <span className="font-medium">Éxito:</span>
+            </div>
+            <p className="text-sm mt-1">{taskSuccess}</p>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Descripción <span className="text-red-500">*</span>
+              </label>
+              <OptimizedInput
+                value={newTask.description}
+                onChange={(value) => {
+                  setNewTask(prev => ({ ...prev, description: value }));
+                  setTaskError('');
+                }}
+                placeholder="Descripción de la tarea"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={isCreatingTask}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Categoría <span className="text-red-500">*</span>
+              </label>
+              <OptimizedSelect
+                value={newTask.category}
+                onChange={(value) => {
+                  if (value === '__create_new__') {
+                    setShowNewCategoryModal(true);
+                  } else {
+                    setNewTask(prev => ({ ...prev, category: value }));
+                    setTaskError('');
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={isCreatingTask}
               >
@@ -307,8 +1742,7 @@
     </div>
   );
 });
-
-// Panel de administrador
+// Panel de administrador COMPLETO
 const AdminPanel = memo(({ 
   users,
   tasks,
@@ -659,6 +2093,10 @@ const AdminPanel = memo(({
                           <span className={`px-2 py-1 text-xs rounded-full ${getPriorityColor(task.priority)}`}>
                             {task.priority?.charAt(0).toUpperCase() + task.priority?.slice(1)}
                           </span>
+                          <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(task.status)}`}>
+                            {task.status === 'pendiente' ? 'Pendiente' : 
+                             task.status === 'en_progreso' ? 'En progreso' : 'Completada'}
+                          </span>
                           {isOverdue && task.status !== 'completada' && (
                             <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
                               Vencida
@@ -809,7 +2247,7 @@ const AdminPanel = memo(({
     );
   };
 
-  // Resto de componentes del AdminPanel simplificados para mantener el código manejable
+  // Componente Analytics
   const AnalyticsPanel = () => {
     const [chartData, setChartData] = useState({
       employeeHours: {},
@@ -939,7 +2377,7 @@ const AdminPanel = memo(({
     );
   };
 
-  // Componentes restantes simplificados por brevedad
+  // Componentes simplificados para las otras funciones
   const UserManagement = () => (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Gestión de Usuarios</h2>
@@ -978,6 +2416,7 @@ const AdminPanel = memo(({
 
   return (
     <div className="flex">
+      {/* Sidebar Admin */}
       <div className="w-64 bg-white rounded-lg shadow-sm border h-fit mr-8">
         <nav className="p-4">
           <ul className="space-y-2">
@@ -1051,6 +2490,7 @@ const AdminPanel = memo(({
         </nav>
       </div>
 
+      {/* Contenido Admin */}
       <div className="flex-1">
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'assigned-tasks' && <AssignedTasksManagement />}
@@ -1062,7 +2502,6 @@ const AdminPanel = memo(({
     </div>
   );
 });
-
 // Componente principal
 const App = () => {
   const {
@@ -1126,6 +2565,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -1140,6 +2580,11 @@ const App = () => {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-gray-600">Hola, {currentUser.name}</span>
+              {isAdmin && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
+                  Administrador
+                </span>
+              )}
               <button
                 onClick={handleLogout}
                 className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors duration-200"
@@ -1191,1040 +2636,4 @@ const App = () => {
   );
 };
 
-export default App;1 text-xs rounded-full ${getStatusColor(task.status)}`}>
-                            {task.status === 'pendiente' ? 'Pendiente' : 
-                             task.status === 'en_progreso' ? 'En progreso' : 'Completada'}
-                          </span>
-                          <span className={`px-2 py-});
-
-// Panel de empleado
-const EmployeePanel = memo(({ 
-  user, 
-  categories, 
-  tasks, 
-  diasJustificados, 
-  assignedTasks,
-  createTask, 
-  updateTask, 
-  deleteTask, 
-  createCategory, 
-  createJustifiedDay,
-  updateAssignedTask
-}) => {
-  const [newTask, setNewTask] = useState({ 
-    description: '', 
-    category: '', 
-    hours: '', 
-    date: new Date().toISOString().split('T')[0] 
-  });
-  const [editingTask, setEditingTask] = useState(null);
-  const [activeTimer, setActiveTimer] = useState(null);
-  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState(null);
-  const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [taskError, setTaskError] = useState('');
-  const [taskSuccess, setTaskSuccess] = useState('');
-  const [isCreatingTask, setIsCreatingTask] = useState(false);
-
-  const userCategories = useMemo(() => categories[user.department] || [], [categories, user.department]);
-  
-  const todayTasks = useMemo(() => 
-    tasks.filter(task => 
-      task.user_id === user.id && 
-      task.date === new Date().toISOString().split('T')[0]
-    ), [tasks, user.id]
-  );
-
-  const totalHours = useMemo(() => 
-    todayTasks.reduce((sum, task) => sum + task.hours, 0), 
-    [todayTasks]
-  );
-
-  const calculateNextHorario = useCallback((hours, date) => {
-    const tasksForDate = tasks.filter(task => 
-      task.user_id === user.id && task.date === date
-    );
-
-    if (tasksForDate.length === 0) {
-      const start = user.hora_inicio || '09:00';
-      const startTime = new Date(`2000-01-01T${start}:00`);
-      const endTime = new Date(startTime);
-      endTime.setHours(endTime.getHours() + Math.floor(hours));
-      endTime.setMinutes(endTime.getMinutes() + (hours % 1) * 60);
-      return `${start}-${endTime.toTimeString().slice(0, 5)}`;
-    }
-
-    const sortedTasks = tasksForDate.sort((a, b) => a.id - b.id);
-    const lastTask = sortedTasks[sortedTasks.length - 1];
-    const lastEndTime = lastTask.horario ? lastTask.horario.split('-')[1] : '09:00';
-    
-    const startTime = new Date(`2000-01-01T${lastEndTime}:00`);
-    const endTime = new Date(startTime);
-    endTime.setHours(endTime.getHours() + Math.floor(hours));
-    endTime.setMinutes(endTime.getMinutes() + (hours % 1) * 60);
-    
-    return `${lastEndTime}-${endTime.toTimeString().slice(0, 5)}`;
-  }, [tasks, user.id, user.hora_inicio]);
-
-  const handleAddTask = useCallback(async () => {
-    setTaskError('');
-    setTaskSuccess('');
-    setIsCreatingTask(true);
-
-    try {
-      if (!newTask.description.trim()) {
-        setTaskError('La descripción de la tarea es obligatoria');
-        return;
-      }
-      
-      if (!newTask.category) {
-        setTaskError('Debe seleccionar una categoría');
-        return;
-      }
-      
-      if (!newTask.hours || isNaN(newTask.hours) || parseFloat(newTask.hours) <= 0) {
-        setTaskError('Las horas deben ser un número válido mayor a 0');
-        return;
-      }
-      
-      if (!newTask.date) {
-        setTaskError('La fecha es obligatoria');
-        return;
-      }
-
-      const hours = parseFloat(newTask.hours);
-      
-      if (hours > 12) {
-        setTaskError('No se pueden registrar más de 12 horas para una tarea');
-        return;
-      }
-
-      const taskData = {
-        user_id: user.id,
-        description: newTask.description.trim(),
-        category: newTask.category,
-        hours: hours,
-        date: newTask.date,
-        horario: calculateNextHorario(hours, newTask.date)
-      };
-
-      const result = await createTask(taskData);
-      
-      if (result.success) {
-        setTaskSuccess(`Tarea "${newTask.description.trim()}" creada exitosamente`);
-        
-        setNewTask({ 
-          description: '', 
-          category: '', 
-          hours: '', 
-          date: new Date().toISOString().split('T')[0] 
-        });
-        
-        setTimeout(() => {
-          setTaskSuccess('');
-        }, 3000);
-      } else {
-        setTaskError(`Error al crear la tarea: ${result.error}`);
-      }
-    } catch (error) {
-      setTaskError('Error inesperado al crear la tarea');
-    } finally {
-      setIsCreatingTask(false);
-    }
-  }, [newTask, user.id, calculateNextHorario, createTask]);
-
-  const handleEditTask = useCallback((task) => {
-    setEditingTask({ ...task });
-  }, []);
-
-  const handleUpdateTask = useCallback(async () => {
-    if (!editingTask.description || !editingTask.category || !editingTask.hours) return;
-
-    const result = await updateTask(editingTask.id, {
-      description: editingTask.description,
-      category: editingTask.category,
-      hours: editingTask.hours
-    });
-    
-    if (result.success) {
-      setEditingTask(null);
-    }
-  }, [editingTask, updateTask]);
-
-  const handleDeleteTask = useCallback((taskId) => {
-    const task = tasks.find(t => t.id === taskId);
-    setDeleteTaskConfirm(task);
-  }, [tasks]);
-
-  const confirmDeleteTask = useCallback(async () => {
-    if (deleteTaskConfirm) {
-      await deleteTask(deleteTaskConfirm.id);
-      setDeleteTaskConfirm(null);
-    }
-  }, [deleteTaskConfirm, deleteTask]);
-
-  const cancelDeleteTask = useCallback(() => {
-    setDeleteTaskConfirm(null);
-  }, []);
-
-  const handleTimerUpdate = useCallback(async (taskId, hours) => {
-    await updateTask(taskId, { hours });
-  }, [updateTask]);
-
-  const handleTimerToggle = useCallback((taskId) => {
-    setActiveTimer(prev => prev === taskId ? null : taskId);
-  }, []);
-
-  const handleCreateCategory = useCallback(async () => {
-    const trimmedName = newCategoryName.trim();
-    
-    if (!trimmedName) return;
-    
-    const result = await createCategory(user.department, trimmedName);
-    if (result.success) {
-      setNewTask(prev => ({ ...prev, category: trimmedName }));
-      setNewCategoryName('');
-      setShowNewCategoryModal(false);
-    }
-  }, [newCategoryName, user.department, createCategory]);
-
-  return (
-    <div className="space-y-6">
-      {/* Información del Empleado */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          <User className="mr-2" size={20} />
-          {user.name}
-        </h3>
-        <div className="flex items-center text-sm">
-          <Building className="mr-2 text-gray-500" size={16} />
-          <span className="text-gray-600">Departamento:</span>
-          <span className="ml-2 font-medium text-gray-800">{user.department}</span>
-        </div>
-      </div>
-
-      {/* Tareas Asignadas */}
-      <TareasAsignadas 
-        user={user}
-        assignedTasks={assignedTasks}
-        updateAssignedTask={updateAssignedTask}
-      />
-
-      {/* Formulario nueva tarea */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          <Plus className="mr-2" size={20} />
-          Nueva Tarea
-        </h3>
-
-        {taskError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-            <div className="flex items-center">
-              <AlertTriangle className="mr-2" size={16} />
-              <span className="font-medium">Error:</span>
-            </div>
-            <p className="text-sm mt-1">{taskError}</p>
-          </div>
-        )}
-        
-        {taskSuccess && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-            <div className="flex items-center">
-              <CheckCircle className="mr-2" size={16} />
-              <span className="font-medium">Éxito:</span>
-            </div>
-            <p className="text-sm mt-1">{taskSuccess}</p>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Descripción <span className="text-red-500">*</span>
-              </label>
-              <OptimizedInput
-                value={newTask.description}
-                onChange={(value) => {
-                  setNewTask(prev => ({ ...prev, description: value }));
-                  setTaskError('');
-                }}
-                placeholder="Descripción de la tarea"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isCreatingTask}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Categoría <span className="text-red-500">*</span>
-              </label>
-              <OptimizedSelect
-                value={newTask.category}
-                onChange={(value) => {
-                  if (value === '__create_new__') {
-                    setShowNewCategoryModal(true);
-                  } else {
-                    setNewTask(prev => ({ ...prev, category: value }));
-                    setTaskError('');
-                  }
-                }}
-                className="w-full px-3 py-2import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle, Send, MessageSquare, FileText, ArrowRight, PlayCircle, CheckSquare } from 'lucide-react';
-
-// Configuración de Supabase
-const SUPABASE_URL = 'https://enpgabqnvggkzlqjhkfc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVucGdhYnFudmdna3pscWpoa2ZjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTM0NDA5MywiZXhwIjoyMDcwOTIwMDkzfQ.GEDptQUZfE0vLi38B6uOqhM-ORtmwjRO-GjfLsynLvs';
-
-// Cliente simple de Supabase
-class SupabaseClient {
-  constructor(url, key) {
-    this.url = url;
-    this.key = key;
-    this.headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`,
-      'apikey': key
-    };
-  }
-
-async request(endpoint, options = {}) {
-  const url = `${this.url}/rest/v1${endpoint}`;
-  const config = {
-    headers: {
-      ...this.headers,
-      'Prefer': 'return=representation'
-    },
-    ...options
-  };
-
-  try {
-    const response = await fetch(url, config);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const contentType = response.headers.get('content-type');
-    const hasContent = response.headers.get('content-length') !== '0';
-    
-    let data = null;
-    if (contentType?.includes('application/json') && hasContent) {
-      const text = await response.text();
-      if (text.trim()) {
-        data = JSON.parse(text);
-      }
-    }
-    
-    return { data, error: null };
-  } catch (error) {
-    console.error('Supabase request error:', error);
-    return { data: null, error };
-  }
-}
-
-  async select(table, query = '*') {
-    return this.request(`/${table}?select=${query}`);
-  }
-
-  async insert(table, data) {
-    return this.request(`/${table}`, {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  }
-
-  async update(table, data, filter) {
-    return this.request(`/${table}?${filter}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data)
-    });
-  }
-
-  async delete(table, filter) {
-    return this.request(`/${table}?${filter}`, {
-      method: 'DELETE'
-    });
-  }
-}
-
-const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// Datos iniciales para setup
-const departments = ['Marketing', 'Ventas', 'Atención al Cliente', 'Administración', 'Edición', 'Equipo Docente'];
-
-const initialCategories = {
-  'Marketing': ['SEO', 'SEM', 'Redes Sociales', 'Contenido'],
-  'Ventas': ['Prospección', 'Reuniones', 'Cierre', 'Seguimiento'],
-  'Atención al Cliente': ['Soporte', 'Reclamaciones', 'Consultas'],
-  'Administración': ['Finanzas', 'RRHH', 'Legal'],
-  'Edición': ['Diseño', 'Redacción', 'Revisión'],
-  'Equipo Docente': ['Clases', 'Preparación', 'Evaluación']
-};
-
-// Hook para manejo de datos con Supabase
-const useSupabaseData = () => {
-  const [users, setUsers] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [categories, setCategories] = useState({});
-  const [diasJustificados, setDiasJustificados] = useState([]);
-  const [alertasArchivadas, setAlertasArchivadas] = useState([]);
-  const [assignedTasks, setAssignedTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const initializeData = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      const { data: existingUsers } = await supabase.select('users');
-      
-      if (!existingUsers || existingUsers.length === 0) {
-        const initialUsers = [
-          { 
-            username: 'juan', 
-            password: 'abc123', 
-            name: 'Juan Pérez', 
-            email: 'juan@empresa.com', 
-            department: 'Marketing', 
-            horas_objetivo: 8, 
-            hora_inicio: '09:00' 
-          },
-          { 
-            username: 'maria', 
-            password: 'def456', 
-            name: 'María García', 
-            email: 'maria@empresa.com', 
-            department: 'Ventas', 
-            horas_objetivo: 7.5, 
-            hora_inicio: '08:30' 
-          },
-          { 
-            username: 'admin', 
-            password: 'admin1', 
-            name: 'Administrador', 
-            email: 'admin@empresa.com', 
-            department: 'Administración', 
-            horas_objetivo: 8, 
-            hora_inicio: '09:00', 
-            role: 'admin' 
-          },
-          { 
-            username: 'carlos', 
-            password: 'demo123', 
-            name: 'Carlos Martín', 
-            email: 'carlos@empresa.com', 
-            department: 'Marketing', 
-            horas_objetivo: 8, 
-            hora_inicio: '09:00' 
-          }
-        ];
-
-        await supabase.insert('users', initialUsers);
-        
-        const categoryInserts = [];
-        Object.entries(initialCategories).forEach(([dept, cats]) => {
-          cats.forEach(cat => {
-            categoryInserts.push({ department: dept, name: cat });
-          });
-        });
-        
-        await supabase.insert('categories', categoryInserts);
-
-        const carlosUser = await supabase.select('users', '*').then(res => 
-          res.data?.find(u => u.username === 'carlos')
-        );
-
-        if (carlosUser) {
-          const demoTasks = [
-            { 
-              user_id: carlosUser.id, 
-              description: 'Optimización SEO página principal', 
-              category: 'SEO', 
-              hours: 2.5, 
-              date: new Date().toISOString().split('T')[0], 
-              horario: '09:00-11:30' 
-            },
-            { 
-              user_id: carlosUser.id, 
-              description: 'Campaña SEM Google Ads', 
-              category: 'SEM', 
-              hours: 2, 
-              date: new Date().toISOString().split('T')[0], 
-              horario: '11:30-13:30' 
-            },
-            { 
-              user_id: carlosUser.id, 
-              description: 'Análisis keywords competencia', 
-              category: 'SEO', 
-              hours: 3, 
-              date: new Date(Date.now() - 86400000).toISOString().split('T')[0], 
-              horario: '09:00-12:00' 
-            }
-          ];
-
-          await supabase.insert('tasks', demoTasks);
-        }
-      }
-
-      await loadAllData();
-      
-    } catch (err) {
-      console.error('Error initializing data:', err);
-      setError('Error al inicializar la aplicación');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadAllData = useCallback(async () => {
-    try {
-      const [usersRes, tasksRes, categoriesRes, justifiedRes, archivedRes, assignedRes] = await Promise.all([
-        supabase.select('users'),
-        supabase.select('tasks'),
-        supabase.select('categories'),
-        supabase.select('justified_days'),
-        supabase.select('archived_alerts'),
-        supabase.select('assigned_tasks')
-      ]);
-      
-      if (usersRes.data) setUsers(usersRes.data);
-      if (tasksRes.data) setTasks(tasksRes.data);
-      if (justifiedRes.data) setDiasJustificados(justifiedRes.data);
-      if (archivedRes.data) setAlertasArchivadas(archivedRes.data);
-      if (assignedRes.data) setAssignedTasks(assignedRes.data);
-
-      if (categoriesRes.data) {
-        const categoriesObj = {};
-        categoriesRes.data.forEach(cat => {
-          if (!categoriesObj[cat.department]) {
-            categoriesObj[cat.department] = [];
-          }
-          categoriesObj[cat.department].push(cat.name);
-        });
-        setCategories(categoriesObj);
-      }
-
-    } catch (err) {
-      console.error('Error loading data:', err);
-      setError('Error al cargar los datos');
-    }
-  }, []);
-
-  // Funciones CRUD para usuarios
-  const createUser = useCallback(async (userData) => {
-    try {
-      const { data, error } = await supabase.insert('users', userData);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const updateUser = useCallback(async (userId, userData) => {
-    try {
-      const { data, error } = await supabase.update('users', userData, `id=eq.${userId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const deleteUser = useCallback(async (userId) => {
-    try {
-      const { data, error } = await supabase.delete('users', `id=eq.${userId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  // Funciones CRUD para tareas
-  const createTask = useCallback(async (taskData) => {
-    try {
-      const { data, error } = await supabase.insert('tasks', taskData);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const updateTask = useCallback(async (taskId, taskData) => {
-    try {
-      const { data, error } = await supabase.update('tasks', taskData, `id=eq.${taskId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const deleteTask = useCallback(async (taskId) => {
-    try {
-      const { data, error } = await supabase.delete('tasks', `id=eq.${taskId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  // Funciones CRUD para tareas asignadas
-  const createAssignedTask = useCallback(async (taskData) => {
-    try {
-      const { data, error } = await supabase.insert('assigned_tasks', taskData);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const updateAssignedTask = useCallback(async (taskId, taskData) => {
-    try {
-      const { data, error } = await supabase.update('assigned_tasks', taskData, `id=eq.${taskId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const deleteAssignedTask = useCallback(async (taskId) => {
-    try {
-      const { data, error } = await supabase.delete('assigned_tasks', `id=eq.${taskId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  // Funciones para categorías
-  const createCategory = useCallback(async (department, name) => {
-    try {
-      const { data, error } = await supabase.insert('categories', { department, name });
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const deleteCategoryFromDB = useCallback(async (department, name) => {
-    try {
-      const { data, error } = await supabase.delete('categories', `department=eq.${department}&name=eq.${name}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  // Funciones para días justificados
-  const createJustifiedDay = useCallback(async (justificationData) => {
-    try {
-      const { data, error } = await supabase.insert('justified_days', justificationData);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const archivarAlerta = useCallback(async (alerta, archivedBy = 'admin') => {
-    try {
-      const alertData = {
-        alert_id: alerta.id,
-        empleado_id: alerta.empleadoId,
-        empleado_name: alerta.empleado,
-        fecha: alerta.fecha,
-        tipo: alerta.tipo,
-        horas_objetivo: alerta.horasObjetivo,
-        horas_registradas: alerta.horasRegistradas,
-        horas_faltantes: alerta.horasFaltantes,
-        departamento: alerta.departamento,
-        archived_by: archivedBy
-      };
-
-      const { data, error } = await supabase.insert('archived_alerts', alertData);
-      if (error) throw error;
-      
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      console.error('Error archiving alert:', err);
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const restaurarAlerta = useCallback(async (alertId) => {
-    try {
-      const { data, error } = await supabase.delete('archived_alerts', `alert_id=eq.${alertId}`);
-      if (error) throw error;
-      
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      console.error('Error restoring alert:', err);
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  useEffect(() => {
-    initializeData();
-  }, [initializeData]);
-
-  return {
-    users,
-    tasks,
-    categories,
-    diasJustificados,
-    alertasArchivadas,
-    assignedTasks,
-    loading,
-    error,
-    createUser,
-    updateUser,
-    deleteUser,
-    createTask,
-    updateTask,
-    deleteTask,
-    createAssignedTask,
-    updateAssignedTask,
-    deleteAssignedTask,
-    createCategory,
-    deleteCategoryFromDB,
-    createJustifiedDay,
-    archivarAlerta,
-    restaurarAlerta,
-    loadAllData
-  };
-};
-
-// Componente Input optimizado
-const OptimizedInput = memo(({ value, onChange, placeholder, type = 'text', className = '', ...props }) => {
-  const handleChange = useCallback((e) => {
-    onChange(e.target.value);
-  }, [onChange]);
-
-  return (
-    <input
-      type={type}
-      value={value}
-      onChange={handleChange}
-      placeholder={placeholder}
-      className={className}
-      {...props}
-    />
-  );
-});
-
-// Componente Select optimizado
-const OptimizedSelect = memo(({ value, onChange, children, className = '', ...props }) => {
-  const handleChange = useCallback((e) => {
-    onChange(e.target.value);
-  }, [onChange]);
-
-  return (
-    <select
-      value={value}
-      onChange={handleChange}
-      className={className}
-      {...props}
-    >
-      {children}
-    </select>
-  );
-});
-
-// Componente de Loading
-const LoadingSpinner = () => (
-  <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-    <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
-      <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-        <Clock className="text-white text-2xl animate-spin" />
-      </div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">TimeTracker Pro</h1>
-      <p className="text-gray-600">Cargando aplicación...</p>
-      <div className="mt-4">
-        <div className="animate-pulse bg-gray-200 h-2 rounded-full"></div>
-      </div>
-    </div>
-  </div>
-);
-
-// Componente Error
-const ErrorDisplay = ({ error, onRetry }) => (
-  <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-    <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
-      <div className="bg-red-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-        <AlertTriangle className="text-white text-2xl" />
-      </div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">Error</h1>
-      <p className="text-gray-600 mb-4">{error}</p>
-      <button
-        onClick={onRetry}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
-      >
-        Reintentar
-      </button>
-    </div>
-  </div>
-);
-
-// Componente Login
-const Login = memo(({ onLogin, loginError, users }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const displayError = loginError || error;
-
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    
-    if (username.length === 0 || password.length === 0) {
-      setError('Por favor, complete todos los campos');
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      await onLogin(username, password);
-    } catch (err) {
-      setError('Error al iniciar sesión');
-    } finally {
-      setLoading(false);
-    }
-  }, [username, password, onLogin]);
-
-  const handleUsernameChange = useCallback((value) => {
-    setUsername(value);
-    if (displayError) setError('');
-  }, [displayError]);
-
-  const handlePasswordChange = useCallback((value) => {
-    setPassword(value);
-    if (displayError) setError('');
-  }, [displayError]);
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Clock className="text-white text-2xl" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-800">TimeTracker Pro</h1>
-          <p className="text-gray-600 mt-2">Gestión de tiempo laboral</p>
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Usuario</label>
-            <OptimizedInput
-              value={username}
-              onChange={handleUsernameChange}
-              placeholder="Ingrese su usuario"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              autoComplete="username"
-              disabled={loading}
-              onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
-            <div className="relative">
-              <OptimizedInput
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={handlePasswordChange}
-                placeholder="Ingrese su contraseña"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pr-12"
-                autoComplete="current-password"
-                disabled={loading}
-                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                disabled={loading}
-              >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
-          </div>
-
-          {displayError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center">
-              <AlertTriangle className="mr-2 text-red-600" size={20} />
-              <div>
-                <p className="font-medium">Error de acceso</p>
-                <p className="text-sm">{displayError}</p>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Iniciando sesión...
-              </>
-            ) : (
-              'Iniciar Sesión'
-            )}
-          </button>
-        </div>
-
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600 mb-2">Usuarios de prueba:</p>
-          <div className="text-xs space-y-1">
-            <div>• juan / abc123</div>
-            <div>• maria / def456</div>
-            <div>• carlos / demo123</div>
-            <div>• admin / admin1</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-// Componente Temporizador
-const Timer = memo(({ task, onUpdate, isActive, onToggle }) => {
-  const [seconds, setSeconds] = useState(0);
-  const [lastUpdateTime, setLastUpdateTime] = useState(0);
-
-  useEffect(() => {
-    if (!isActive) return;
-
-    const interval = setInterval(() => {
-      setSeconds(prev => {
-        const newSeconds = prev + 1;
-        const totalMinutes = Math.floor(newSeconds / 60);
-        
-        if (totalMinutes > 0 && totalMinutes % 30 === 0 && totalMinutes !== lastUpdateTime) {
-          const hours = newSeconds / 3600;
-          onUpdate(task.id, hours);
-          setLastUpdateTime(totalMinutes);
-        }
-        
-        return newSeconds;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isActive, task.id, onUpdate, lastUpdateTime]);
-
-  const handleToggle = useCallback(() => {
-    if (isActive) {
-      const hours = seconds / 3600;
-      onUpdate(task.id, hours);
-    }
-    onToggle(task.id);
-  }, [isActive, seconds, task.id, onUpdate, onToggle]);
-
-  const formatTime = useCallback((totalSeconds) => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }, []);
-
-  return (
-    <div className="flex items-center space-x-3">
-      <div className={`font-mono text-lg font-bold ${isActive ? 'text-green-600' : 'text-gray-600'}`}>
-        {formatTime(seconds)}
-      </div>
-      <button
-        onClick={handleToggle}
-        className={`p-2 rounded-full transition-colors ${
-          isActive 
-            ? 'bg-red-100 hover:bg-red-200 text-red-600' 
-            : 'bg-green-100 hover:bg-green-200 text-green-600'
-        }`}
-      >
-        {isActive ? <Pause size={16} /> : <Play size={16} />}
-      </button>
-    </div>
-  );
-});
-
-// Componente Tareas Asignadas para Empleados
-const TareasAsignadas = memo(({ user, assignedTasks, updateAssignedTask }) => {
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [employeeComment, setEmployeeComment] = useState('');
-
-  const userAssignedTasks = useMemo(() => 
-    assignedTasks.filter(task => task.assigned_to === user.id), 
-    [assignedTasks, user.id]
-  );
-
-  const pendingTasks = useMemo(() => 
-    userAssignedTasks.filter(task => task.status === 'pendiente'), 
-    [userAssignedTasks]
-  );
-
-  const inProgressTasks = useMemo(() => 
-    userAssignedTasks.filter(task => task.status === 'en_progreso'), 
-    [userAssignedTasks]
-  );
-
-  const completedTasks = useMemo(() => 
-    userAssignedTasks.filter(task => task.status === 'completada'), 
-    [userAssignedTasks]
-  );
-
-  const handleStartTask = useCallback(async (task) => {
-    await updateAssignedTask(task.id, { status: 'en_progreso' });
-  }, [updateAssignedTask]);
-
-  const handleCompleteTask = useCallback(async (task) => {
-    const updateData = {
-      status: 'completada',
-      completed_at: new Date().toISOString(),
-      employee_comments: employeeComment.trim() || null
-    };
-    
-    await updateAssignedTask(task.id, updateData);
-    setSelectedTask(null);
-    setEmployeeComment('');
-  }, [updateAssignedTask, employeeComment]);
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'alta': return 'bg-red-100 text-red-800 border-red-200';
-      case 'media': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'baja': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!
+export default App;       
