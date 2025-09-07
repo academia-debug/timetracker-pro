@@ -17,41 +17,25 @@ class SupabaseClient {
     };
   }
 
-async request(endpoint, options = {}) {
-  const url = `${this.url}/rest/v1${endpoint}`;
-  const config = {
-    headers: {
-      ...this.headers,
-      // Agregar header para que Supabase devuelva los datos insertados
-      'Prefer': 'return=representation'
-    },
-    ...options
-  };
+  async request(endpoint, options = {}) {
+    const url = `${this.url}/rest/v1${endpoint}`;
+    const config = {
+      headers: this.headers,
+      ...options
+    };
 
-  try {
-    const response = await fetch(url, config);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    // Verificar si la respuesta tiene contenido antes de parsear JSON
-    const contentType = response.headers.get('content-type');
-    const hasContent = response.headers.get('content-length') !== '0';
-    
-    let data = null;
-    if (contentType?.includes('application/json') && hasContent) {
-      const text = await response.text();
-      if (text.trim()) {
-        data = JSON.parse(text);
+    try {
+      const response = await fetch(url, config);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+      const data = await response.json();
+      return { data, error: null };
+    } catch (error) {
+      console.error('Supabase request error:', error);
+      return { data: null, error };
     }
-    
-    return { data, error: null };
-  } catch (error) {
-    console.error('Supabase request error:', error);
-    return { data: null, error };
   }
-}
 
   async select(table, query = '*') {
     return this.request(`/${table}?select=${query}`);
@@ -98,7 +82,6 @@ const useSupabaseData = () => {
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState({});
   const [diasJustificados, setDiasJustificados] = useState([]);
-  const [alertasArchivadas, setAlertasArchivadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -133,7 +116,7 @@ const useSupabaseData = () => {
           },
           { 
             username: 'admin', 
-            password: 'admin1', 
+            password: 'admin2', 
             name: 'Administrador', 
             email: 'admin@empresa.com', 
             department: 'Administración', 
@@ -217,17 +200,16 @@ const useSupabaseData = () => {
   // Cargar todos los datos
   const loadAllData = useCallback(async () => {
     try {
-      const [usersRes, tasksRes, categoriesRes, justifiedRes, archivedRes] = await Promise.all([
-  supabase.select('users'),
-  supabase.select('tasks'),
-  supabase.select('categories'),
-  supabase.select('justified_days'),
-  supabase.select('archived_alerts') // NUEVO
-]);
+      const [usersRes, tasksRes, categoriesRes, justifiedRes] = await Promise.all([
+        supabase.select('users'),
+        supabase.select('tasks'),
+        supabase.select('categories'),
+        supabase.select('justified_days')
+      ]);
+
       if (usersRes.data) setUsers(usersRes.data);
       if (tasksRes.data) setTasks(tasksRes.data);
       if (justifiedRes.data) setDiasJustificados(justifiedRes.data);
-      if (archivedRes.data) setAlertasArchivadas(archivedRes.data);
 
       // Procesar categorías
       if (categoriesRes.data) {
@@ -284,17 +266,11 @@ const useSupabaseData = () => {
   // Funciones CRUD para tareas
   const createTask = useCallback(async (taskData) => {
     try {
-      console.log('🚀 Creando tarea:', taskData);
       const { data, error } = await supabase.insert('tasks', taskData);
-      if (error) {
-        console.error('❌ Error creando tarea:', error);
-        throw error;
-      }
-      console.log('✅ Tarea creada exitosamente:', data);
+      if (error) throw error;
       await loadAllData();
       return { success: true };
     } catch (err) {
-      console.error('❌ Error en createTask:', err);
       return { success: false, error: err.message };
     }
   }, [loadAllData]);
@@ -355,56 +331,16 @@ const useSupabaseData = () => {
       return { success: false, error: err.message };
     }
   }, [loadAllData]);
-// AGREGAR AQUÍ LAS NUEVAS FUNCIONES ↓
-const archivarAlerta = useCallback(async (alerta, archivedBy = 'admin') => {
-  try {
-    const alertData = {
-      alert_id: alerta.id,
-      empleado_id: alerta.empleadoId,
-      empleado_name: alerta.empleado,
-      fecha: alerta.fecha,
-      tipo: alerta.tipo,
-      horas_objetivo: alerta.horasObjetivo,
-      horas_registradas: alerta.horasRegistradas,
-      horas_faltantes: alerta.horasFaltantes,
-      departamento: alerta.departamento,
-      archived_by: archivedBy
-    };
 
-    const { data, error } = await supabase.insert('archived_alerts', alertData);
-    if (error) throw error;
-    
-    await loadAllData();
-    return { success: true };
-  } catch (err) {
-    console.error('Error archiving alert:', err);
-    return { success: false, error: err.message };
-  }
-}, [loadAllData]);
-
-const restaurarAlerta = useCallback(async (alertId) => {
-  try {
-    const { data, error } = await supabase.delete('archived_alerts', `alert_id=eq.${alertId}`);
-    if (error) throw error;
-    
-    await loadAllData();
-    return { success: true };
-  } catch (err) {
-    console.error('Error restoring alert:', err);
-    return { success: false, error: err.message };
-  }
-}, [loadAllData]);
   useEffect(() => {
     initializeData();
   }, [initializeData]);
 
- 
   return {
     users,
     tasks,
     categories,
     diasJustificados,
-    alertasArchivadas, // NUEVO
     loading,
     error,
     createUser,
@@ -416,13 +352,9 @@ const restaurarAlerta = useCallback(async (alertId) => {
     createCategory,
     deleteCategoryFromDB,
     createJustifiedDay,
-    archivarAlerta, // NUEVO
-    restaurarAlerta, // NUEVO
     loadAllData
   };
 };
-
-
 
 // Componente Input optimizado para evitar pérdida de foco
 const OptimizedInput = memo(({ value, onChange, placeholder, type = 'text', className = '', ...props }) => {
@@ -616,7 +548,7 @@ const Login = memo(({ onLogin, loginError, users }) => {
             <div>• juan / abc123</div>
             <div>• maria / def456</div>
             <div>• carlos / demo123</div>
-            <div>• admin / admin2</div>
+            <div>• admin / admin1</div>
           </div>
         </div>
       </div>
@@ -895,9 +827,6 @@ const EmployeePanel = memo(({
   const [deleteTaskConfirm, setDeleteTaskConfirm] = useState(null);
   const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [taskError, setTaskError] = useState('');
-  const [taskSuccess, setTaskSuccess] = useState('');
-  const [isCreatingTask, setIsCreatingTask] = useState(false);
 
   const userCategories = useMemo(() => categories[user.department] || [], [categories, user.department]);
   
@@ -913,110 +842,48 @@ const EmployeePanel = memo(({
     [todayTasks]
   );
 
-  // Función para calcular el siguiente horario (restaurada del código original)
   const calculateNextHorario = useCallback((hours, date) => {
     const tasksForDate = tasks.filter(task => 
       task.user_id === user.id && task.date === date
     );
 
     if (tasksForDate.length === 0) {
-      // Primera tarea del día
-      const start = user.hora_inicio || '09:00';
-      const startTime = new Date(`2000-01-01T${start}:00`);
-      const endTime = new Date(startTime);
+      const start = user.hora_inicio;
+      const endTime = new Date(`2000-01-01T${start}`);
       endTime.setHours(endTime.getHours() + Math.floor(hours));
       endTime.setMinutes(endTime.getMinutes() + (hours % 1) * 60);
       return `${start}-${endTime.toTimeString().slice(0, 5)}`;
     }
 
-    // Continuar desde la última tarea
-    const sortedTasks = tasksForDate.sort((a, b) => a.id - b.id);
-    const lastTask = sortedTasks[sortedTasks.length - 1];
-    const lastEndTime = lastTask.horario ? lastTask.horario.split('-')[1] : '09:00';
-    
-    const startTime = new Date(`2000-01-01T${lastEndTime}:00`);
-    const endTime = new Date(startTime);
-    endTime.setHours(endTime.getHours() + Math.floor(hours));
-    endTime.setMinutes(endTime.getMinutes() + (hours % 1) * 60);
-    
-    return `${lastEndTime}-${endTime.toTimeString().slice(0, 5)}`;
+    const lastTask = tasksForDate[tasksForDate.length - 1];
+    const lastEndTime = lastTask.horario.split('-')[1];
+    const startTime = new Date(`2000-01-01T${lastEndTime}`);
+    startTime.setHours(startTime.getHours() + Math.floor(hours));
+    startTime.setMinutes(startTime.getMinutes() + (hours % 1) * 60);
+    return `${lastEndTime}-${startTime.toTimeString().slice(0, 5)}`;
   }, [tasks, user.id, user.hora_inicio]);
 
   const handleAddTask = useCallback(async () => {
-    // Limpiar errores y estados previos
-    setTaskError('');
-    setTaskSuccess('');
-    setIsCreatingTask(true);
+    if (!newTask.description || !newTask.category || !newTask.hours || !newTask.date) return;
 
-    try {
-      // Validaciones
-      if (!newTask.description.trim()) {
-        setTaskError('La descripción de la tarea es obligatoria');
-        return;
-      }
-      
-      if (!newTask.category) {
-        setTaskError('Debe seleccionar una categoría');
-        return;
-      }
-      
-      if (!newTask.hours || isNaN(newTask.hours) || parseFloat(newTask.hours) <= 0) {
-        setTaskError('Las horas deben ser un número válido mayor a 0');
-        return;
-      }
-      
-      if (!newTask.date) {
-        setTaskError('La fecha es obligatoria');
-        return;
-      }
+    const hours = parseFloat(newTask.hours);
+    const taskData = {
+      user_id: user.id,
+      description: newTask.description,
+      category: newTask.category,
+      hours,
+      date: newTask.date,
+      horario: calculateNextHorario(hours, newTask.date)
+    };
 
-      const hours = parseFloat(newTask.hours);
-      
-      if (hours > 12) {
-        setTaskError('No se pueden registrar más de 12 horas para una tarea');
-        return;
-      }
-
-      // Preparar datos de la tarea
-      const taskData = {
-        user_id: user.id,
-        description: newTask.description.trim(),
-        category: newTask.category,
-        hours: hours,
-        date: newTask.date,
-        horario: calculateNextHorario(hours, newTask.date)
-      };
-
-      console.log('📋 Enviando tarea a Supabase:', taskData);
-
-      // Crear la tarea
-      const result = await createTask(taskData);
-      
-      if (result.success) {
-        console.log('✅ Tarea creada exitosamente');
-        setTaskSuccess(`Tarea "${newTask.description.trim()}" creada exitosamente`);
-        
-        // Limpiar formulario
-        setNewTask({ 
-          description: '', 
-          category: '', 
-          hours: '', 
-          date: new Date().toISOString().split('T')[0] 
-        });
-        
-        // Limpiar mensaje de éxito después de 3 segundos
-        setTimeout(() => {
-          setTaskSuccess('');
-        }, 3000);
-      } else {
-        console.error('❌ Error creando tarea:', result.error);
-        setTaskError(`Error al crear la tarea: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('❌ Error inesperado:', error);
-      setTaskError('Error inesperado al crear la tarea');
-    } finally {
-      setIsCreatingTask(false);
+    const result = await createTask(taskData);
+    if (result.success) {
+      setNewTask({ 
+        description: '', 
+        category: '', 
+        hours: '', 
+        date: new Date().toISOString().split('T')[0] 
+      });
     }
   }, [newTask, user.id, calculateNextHorario, createTask]);
 
@@ -1096,49 +963,20 @@ const EmployeePanel = memo(({
           <Plus className="mr-2" size={20} />
           Nueva Tarea
         </h3>
-
-        {/* Mensajes de feedback */}
-        {taskError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-            <div className="flex items-center">
-              <AlertTriangle className="mr-2" size={16} />
-              <span className="font-medium">Error:</span>
-            </div>
-            <p className="text-sm mt-1">{taskError}</p>
-          </div>
-        )}
-        
-        {taskSuccess && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-            <div className="flex items-center">
-              <CheckCircle className="mr-2" size={16} />
-              <span className="font-medium">Éxito:</span>
-            </div>
-            <p className="text-sm mt-1">{taskSuccess}</p>
-          </div>
-        )}
-
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Descripción <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
               <OptimizedInput
                 value={newTask.description}
-                onChange={(value) => {
-                  setNewTask(prev => ({ ...prev, description: value }));
-                  setTaskError('');
-                }}
+                onChange={(value) => setNewTask(prev => ({ ...prev, description: value }))}
                 placeholder="Descripción de la tarea"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isCreatingTask}
+                required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Categoría <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
               <OptimizedSelect
                 value={newTask.category}
                 onChange={(value) => {
@@ -1146,11 +984,10 @@ const EmployeePanel = memo(({
                     setShowNewCategoryModal(true);
                   } else {
                     setNewTask(prev => ({ ...prev, category: value }));
-                    setTaskError('');
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isCreatingTask}
+                required
               >
                 <option value="">Seleccionar categoría</option>
                 {userCategories.map(cat => (
@@ -1162,56 +999,35 @@ const EmployeePanel = memo(({
               </OptimizedSelect>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Horas <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Horas</label>
               <OptimizedInput
                 type="number"
                 step="0.5"
                 min="0.5"
                 max="12"
                 value={newTask.hours}
-                onChange={(value) => {
-                  setNewTask(prev => ({ ...prev, hours: value }));
-                  setTaskError('');
-                }}
-                placeholder="Ej: 2.5"
+                onChange={(value) => setNewTask(prev => ({ ...prev, hours: value }))}
+                placeholder="Horas"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isCreatingTask}
+                required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fecha <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
               <OptimizedInput
                 type="date"
                 value={newTask.date}
-                onChange={(value) => {
-                  setNewTask(prev => ({ ...prev, date: value }));
-                  setTaskError('');
-                }}
+                onChange={(value) => setNewTask(prev => ({ ...prev, date: value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isCreatingTask}
+                required
               />
             </div>
           </div>
           <button
             onClick={handleAddTask}
-            disabled={isCreatingTask || !newTask.description.trim() || !newTask.category || !newTask.hours || !newTask.date}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-2 rounded-md transition-colors duration-200 flex items-center"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors duration-200"
           >
-            {isCreatingTask ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Creando tarea...
-              </>
-            ) : (
-              <>
-                <Plus className="mr-2" size={16} />
-                Agregar Tarea
-              </>
-            )}
+            Agregar Tarea
           </button>
         </div>
       </div>
@@ -1236,7 +1052,7 @@ const EmployeePanel = memo(({
               }`}
               style={{ width: `${Math.min((totalHours / user.horas_objetivo) * 100, 100)}%` }}
             />
-          </div>          
+          </div>
         </div>
       </div>
 
@@ -1247,11 +1063,7 @@ const EmployeePanel = memo(({
           Tareas del Día
         </h3>
         {todayTasks.length === 0 ? (
-          <div className="text-center py-8">
-            <Clock className="mx-auto mb-4 text-gray-400" size={48} />
-            <p className="text-gray-600">No hay tareas registradas para hoy</p>
-            <p className="text-gray-500 text-sm mt-2">Comienza agregando tu primera tarea arriba</p>
-          </div>
+          <p className="text-gray-600 text-center py-8">No hay tareas registradas para hoy</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1461,27 +1273,20 @@ const EmployeePanel = memo(({
 
 // Panel de administrador COMPLETO - Reemplaza el AdminPanel en App.jsx
 const AdminPanel = memo(({ 
-  users,           // ← AGREGAR
-  tasks,           // ← AGREGAR  
-  categories,      // ← AGREGAR
-  diasJustificados, // ← AGREGAR
-  alertasArchivadas,
+  users, 
+  tasks, 
+  categories, 
+  diasJustificados,
   createUser,
   updateUser,
   deleteUser,
   createCategory,
-  deleteCategoryFromDB,
-  archivarAlerta,
-  restaurarAlerta
+  deleteCategoryFromDB 
 }) => {
   const [activeTab, setActiveTab] = useState('users');
 
   // Componente Analytics
   const AnalyticsPanel = () => {
-     const { users: contextUsers, tasks: contextTasks, categories: contextCategories } = useSupabaseData();
-     const users = contextUsers;
-     const tasks = contextTasks;
-     const categories = contextCategories;
     const [chartData, setChartData] = useState({
       dailyHours: {},
       employeeHours: {},
@@ -1831,428 +1636,252 @@ const AdminPanel = memo(({
   };
 
   // Componente Alertas
-const AlertasPanel = () => {
-  const [alertas, setAlertas] = useState([]);
-  const [filtros, setFiltros] = useState({
-    empleado: '',
-    fecha: '',
-    tipo: 'todas', // todas, criticas, moderadas, leves
-    estado: 'activas' // activas, archivadas, todas
-  });
-  const [operationLoading, setOperationLoading] = useState(null);
+  const AlertasPanel = () => {
+    const [alertas, setAlertas] = useState([]);
+    const [filtroEmpleado, setFiltroEmpleado] = useState('');
+    const [filtroFecha, setFiltroFecha] = useState('');
 
-  useEffect(() => {
-    const calcularAlertas = () => {
-      const alertasEncontradas = [];
-      const empleadosActivos = users.filter(u => u.role !== 'admin');
-      
-      // Generar fechas de los últimos 30 días
-      const fechas = [];
-      for (let i = 0; i < 30; i++) {
-        const fecha = new Date();
-        fecha.setDate(fecha.getDate() - i);
-        fechas.push(fecha.toISOString().split('T')[0]);
-      }
-
-      empleadosActivos.forEach(empleado => {
-        fechas.forEach(fecha => {
-          // No procesar fechas futuras
-          const hoy = new Date().toISOString().split('T')[0];
-          if (fecha > hoy) return;
-
-          // Excluir sábados y domingos
-          const fechaObj = new Date(fecha + 'T00:00:00');
-          const diaSemana = fechaObj.getDay();
-          if (diaSemana === 0 || diaSemana === 6) return;
-
-          // Calcular horas trabajadas en esta fecha
-          const tareasDelDia = tasks.filter(task => 
-            task.user_id === empleado.id && task.date === fecha
-          );
-          
-          const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
-          const horasObjetivo = empleado.horas_objetivo || 8;
-          const horasFaltantes = horasObjetivo - horasRegistradas;
-
-          // Solo crear alerta si faltan horas
-          if (horasFaltantes > 0 && horasRegistradas > 0) {
-            alertasEncontradas.push({
-              id: `${empleado.id}-${fecha}`,
-              empleado: empleado.name,
-              empleadoId: empleado.id,
-              fecha: fecha,
-              horasObjetivo: horasObjetivo,
-              horasRegistradas: horasRegistradas,
-              horasFaltantes: horasFaltantes,
-              departamento: empleado.department,
-              tipo: horasFaltantes >= 4 ? 'critica' : horasFaltantes >= 2 ? 'moderada' : 'leve'
-            });
-          } else if (horasRegistradas === 0 && fecha !== hoy) {
-            alertasEncontradas.push({
-              id: `${empleado.id}-${fecha}`,
-              empleado: empleado.name,
-              empleadoId: empleado.id,
-              fecha: fecha,
-              horasObjetivo: horasObjetivo,
-              horasRegistradas: 0,
-              horasFaltantes: horasObjetivo,
-              departamento: empleado.department,
-              tipo: 'critica'
-            });
-          }
-        });
-      });
-
-      // Ordenar por fecha (más recientes primero) y luego por severidad
-      alertasEncontradas.sort((a, b) => {
-        const fechaComparison = new Date(b.fecha) - new Date(a.fecha);
-        if (fechaComparison !== 0) return fechaComparison;
+    useEffect(() => {
+      const calcularAlertas = () => {
+        const alertasEncontradas = [];
+        const empleadosActivos = users.filter(u => u.role !== 'admin');
         
-        const tipoOrden = { critica: 3, moderada: 2, leve: 1 };
-        return tipoOrden[b.tipo] - tipoOrden[a.tipo];
-      });
+        // Generar fechas de los últimos 30 días
+        const fechas = [];
+        for (let i = 0; i < 30; i++) {
+          const fecha = new Date();
+          fecha.setDate(fecha.getDate() - i);
+          fechas.push(fecha.toISOString().split('T')[0]);
+        }
 
-      setAlertas(alertasEncontradas);
+        empleadosActivos.forEach(empleado => {
+          fechas.forEach(fecha => {
+            // No procesar fechas futuras
+            const hoy = new Date().toISOString().split('T')[0];
+            if (fecha > hoy) return;
+
+            // Excluir sábados y domingos
+            const fechaObj = new Date(fecha + 'T00:00:00');
+            const diaSemana = fechaObj.getDay();
+            if (diaSemana === 0 || diaSemana === 6) return;
+
+            // Calcular horas trabajadas en esta fecha
+            const tareasDelDia = tasks.filter(task => 
+              task.user_id === empleado.id && task.date === fecha
+            );
+            
+            const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
+            const horasObjetivo = empleado.horas_objetivo || 8;
+            const horasFaltantes = horasObjetivo - horasRegistradas;
+
+            // Solo crear alerta si faltan horas
+            if (horasFaltantes > 0 && horasRegistradas > 0) {
+              alertasEncontradas.push({
+                id: `${empleado.id}-${fecha}`,
+                empleado: empleado.name,
+                empleadoId: empleado.id,
+                fecha: fecha,
+                horasObjetivo: horasObjetivo,
+                horasRegistradas: horasRegistradas,
+                horasFaltantes: horasFaltantes,
+                departamento: empleado.department,
+                tipo: horasFaltantes >= 4 ? 'critica' : horasFaltantes >= 2 ? 'moderada' : 'leve'
+              });
+            } else if (horasRegistradas === 0 && fecha !== hoy) {
+              alertasEncontradas.push({
+                id: `${empleado.id}-${fecha}`,
+                empleado: empleado.name,
+                empleadoId: empleado.id,
+                fecha: fecha,
+                horasObjetivo: horasObjetivo,
+                horasRegistradas: 0,
+                horasFaltantes: horasObjetivo,
+                departamento: empleado.department,
+                tipo: 'critica'
+              });
+            }
+          });
+        });
+
+        // Ordenar por fecha (más recientes primero) y luego por severidad
+        alertasEncontradas.sort((a, b) => {
+          const fechaComparison = new Date(b.fecha) - new Date(a.fecha);
+          if (fechaComparison !== 0) return fechaComparison;
+          
+          const tipoOrden = { critica: 3, moderada: 2, leve: 1 };
+          return tipoOrden[b.tipo] - tipoOrden[a.tipo];
+        });
+
+        setAlertas(alertasEncontradas);
+      };
+
+      calcularAlertas();
+    }, [users, tasks]);
+
+    const alertasFiltradas = useMemo(() => {
+      return alertas.filter(alerta => {
+        if (filtroEmpleado && alerta.empleadoId !== parseInt(filtroEmpleado)) return false;
+        if (filtroFecha && alerta.fecha !== filtroFecha) return false;
+        return true;
+      });
+    }, [alertas, filtroEmpleado, filtroFecha]);
+
+    const estadisticas = useMemo(() => {
+      const total = alertasFiltradas.length;
+      const criticas = alertasFiltradas.filter(a => a.tipo === 'critica').length;
+      const moderadas = alertasFiltradas.filter(a => a.tipo === 'moderada').length;
+      const leves = alertasFiltradas.filter(a => a.tipo === 'leve').length;
+      
+      return { total, criticas, moderadas, leves };
+    }, [alertasFiltradas]);
+
+    const formatearFecha = (fecha) => {
+      const date = new Date(fecha);
+      return date.toLocaleDateString('es-ES', { 
+        weekday: 'short', 
+        day: 'numeric', 
+        month: 'short',
+        year: 'numeric'
+      });
     };
 
-    calcularAlertas();
-  }, [users, tasks]);
+    const getAlertaColor = (tipo) => {
+      switch (tipo) {
+        case 'critica': return 'border-red-200 bg-red-50';
+        case 'moderada': return 'border-orange-200 bg-orange-50';
+        case 'leve': return 'border-yellow-200 bg-yellow-50';
+        default: return 'border-gray-200 bg-gray-50';
+      }
+    };
 
-  // Filtrar alertas según los criterios seleccionados
-  const alertasFiltradas = useMemo(() => {
-    let alertasParaFiltrar = [];
+    const getAlertaIcon = (tipo) => {
+      switch (tipo) {
+        case 'critica': return <AlertTriangle className="text-red-600" size={20} />;
+        case 'moderada': return <AlertCircle className="text-orange-600" size={20} />;
+        case 'leve': return <Clock className="text-yellow-600" size={20} />;
+        default: return <AlertCircle className="text-gray-600" size={20} />;
+      }
+    };
 
-    // Determinar qué alertas mostrar según el estado
-    if (filtros.estado === 'activas') {
-      alertasParaFiltrar = alertas.filter(alerta => 
-        !alertasArchivadas.some(arch => arch.alert_id === alerta.id)
-      );
-    } else if (filtros.estado === 'archivadas') {
-      alertasParaFiltrar = alertasArchivadas.map(arch => ({
-        id: arch.alert_id,
-        empleado: arch.empleado_name,
-        empleadoId: arch.empleado_id,
-        fecha: arch.fecha,
-        horasObjetivo: arch.horas_objetivo,
-        horasRegistradas: arch.horas_registradas,
-        horasFaltantes: arch.horas_faltantes,
-        departamento: arch.departamento,
-        tipo: arch.tipo,
-        fechaArchivado: arch.archived_at,
-        archivedBy: arch.archived_by
-      }));
-    } else { // 'todas'
-      const activas = alertas.filter(alerta => 
-        !alertasArchivadas.some(arch => arch.alert_id === alerta.id)
-      );
-      const archivadas = alertasArchivadas.map(arch => ({
-        id: arch.alert_id,
-        empleado: arch.empleado_name,
-        empleadoId: arch.empleado_id,
-        fecha: arch.fecha,
-        horasObjetivo: arch.horas_objetivo,
-        horasRegistradas: arch.horas_registradas,
-        horasFaltantes: arch.horas_faltantes,
-        departamento: arch.departamento,
-        tipo: arch.tipo,
-        fechaArchivado: arch.archived_at,
-        archivedBy: arch.archived_by
-      }));
-      alertasParaFiltrar = [...activas, ...archivadas];
-    }
+    const getAlertaTipoTexto = (tipo) => {
+      switch (tipo) {
+        case 'critica': return 'Crítica';
+        case 'moderada': return 'Moderada';
+        case 'leve': return 'Leve';
+        default: return 'Normal';
+      }
+    };
 
-    // Aplicar filtros adicionales
-    return alertasParaFiltrar.filter(alerta => {
-      if (filtros.empleado && alerta.empleadoId !== parseInt(filtros.empleado)) return false;
-      if (filtros.fecha && alerta.fecha !== filtros.fecha) return false;
-      if (filtros.tipo !== 'todas' && alerta.tipo !== filtros.tipo) return false;
-      return true;
-    });
-  }, [alertas, alertasArchivadas, filtros]);
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Control de Alertas</h2>
 
-  // Estadísticas solo de alertas activas
-  const estadisticas = useMemo(() => {
-    const alertasActivas = alertas.filter(alerta => 
-      !alertasArchivadas.some(arch => arch.alert_id === alerta.id)
-    );
-    
-    const total = alertasActivas.length;
-    const criticas = alertasActivas.filter(a => a.tipo === 'critica').length;
-    const moderadas = alertasActivas.filter(a => a.tipo === 'moderada').length;
-    const leves = alertasActivas.filter(a => a.tipo === 'leve').length;
-    const archivadas = alertasArchivadas.length;
-    
-    return { total, criticas, moderadas, leves, archivadas };
-  }, [alertas, alertasArchivadas]);
-
-  // Función para archivar alerta usando base de datos
-  const manejarArchivarAlerta = async (alerta) => {
-    setOperationLoading(`archive-${alerta.id}`);
-    const result = await archivarAlerta(alerta, 'admin');
-    if (!result.success) {
-      console.error('Error archiving alert:', result.error);
-    }
-    setOperationLoading(null);
-  };
-
-  // Función para restaurar alerta usando base de datos
-  const manejarRestaurarAlerta = async (alertaId) => {
-    setOperationLoading(`restore-${alertaId}`);
-    const result = await restaurarAlerta(alertaId);
-    if (!result.success) {
-      console.error('Error restoring alert:', result.error);
-    }
-    setOperationLoading(null);
-  };
-
-  const formatearFecha = (fecha) => {
-    const date = new Date(fecha);
-    return date.toLocaleDateString('es-ES', { 
-      weekday: 'short', 
-      day: 'numeric', 
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  const getAlertaColor = (tipo) => {
-    switch (tipo) {
-      case 'critica': return 'border-red-200 bg-red-50';
-      case 'moderada': return 'border-orange-200 bg-orange-50';
-      case 'leve': return 'border-yellow-200 bg-yellow-50';
-      default: return 'border-gray-200 bg-gray-50';
-    }
-  };
-
-  const getAlertaIcon = (tipo) => {
-    switch (tipo) {
-      case 'critica': return <AlertTriangle className="text-red-600" size={20} />;
-      case 'moderada': return <AlertCircle className="text-orange-600" size={20} />;
-      case 'leve': return <Clock className="text-yellow-600" size={20} />;
-      default: return <AlertCircle className="text-gray-600" size={20} />;
-    }
-  };
-
-  const getAlertaTipoTexto = (tipo) => {
-    switch (tipo) {
-      case 'critica': return 'Crítica';
-      case 'moderada': return 'Moderada';
-      case 'leve': return 'Leve';
-      default: return 'Normal';
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Control de Alertas</h2>
-
-      {/* Resumen de alertas con archivadas */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Activas</p>
-              <p className="text-2xl font-bold text-gray-800">{estadisticas.total}</p>
-            </div>
-            <div className="p-2 bg-gray-100 rounded-full">
-              <AlertCircle className="text-gray-600" size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Críticas</p>
-              <p className="text-2xl font-bold text-red-600">{estadisticas.criticas}</p>
-            </div>
-            <div className="p-2 bg-red-100 rounded-full">
-              <AlertTriangle className="text-red-600" size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Moderadas</p>
-              <p className="text-2xl font-bold text-orange-600">{estadisticas.moderadas}</p>
-            </div>
-            <div className="p-2 bg-orange-100 rounded-full">
-              <AlertCircle className="text-orange-600" size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Leves</p>
-              <p className="text-2xl font-bold text-yellow-600">{estadisticas.leves}</p>
-            </div>
-            <div className="p-2 bg-yellow-100 rounded-full">
-              <Clock className="text-yellow-600" size={20} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Archivadas</p>
-              <p className="text-2xl font-bold text-blue-600">{estadisticas.archivadas}</p>
-            </div>
-            <div className="p-2 bg-blue-100 rounded-full">
-              <CheckCircle className="text-blue-600" size={20} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filtros mejorados */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-semibold mb-4">Filtros</h3>
+        {/* Resumen de alertas */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-            <OptimizedSelect
-              value={filtros.estado}
-              onChange={(value) => setFiltros(prev => ({ ...prev, estado: value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="activas">Solo activas ({estadisticas.total})</option>
-              <option value="archivadas">Solo archivadas ({estadisticas.archivadas})</option>
-              <option value="todas">Todas las alertas</option>
-            </OptimizedSelect>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de alerta</label>
-            <OptimizedSelect
-              value={filtros.tipo}
-              onChange={(value) => setFiltros(prev => ({ ...prev, tipo: value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="todas">Todos los tipos</option>
-              <option value="critica">Solo críticas</option>
-              <option value="moderada">Solo moderadas</option>
-              <option value="leve">Solo leves</option>
-            </OptimizedSelect>
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Alertas</p>
+                <p className="text-2xl font-bold text-gray-800">{estadisticas.total}</p>
+              </div>
+              <div className="p-2 bg-gray-100 rounded-full">
+                <AlertCircle className="text-gray-600" size={20} />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
-            <OptimizedSelect
-              value={filtros.empleado}
-              onChange={(value) => setFiltros(prev => ({ ...prev, empleado: value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Todos los empleados</option>
-              {users.filter(u => u.role !== 'admin').map(user => (
-                <option key={user.id} value={user.id}>{user.name}</option>
-              ))}
-            </OptimizedSelect>
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Críticas</p>
+                <p className="text-2xl font-bold text-red-600">{estadisticas.criticas}</p>
+              </div>
+              <div className="p-2 bg-red-100 rounded-full">
+                <AlertTriangle className="text-red-600" size={20} />
+              </div>
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha específica</label>
-            <OptimizedInput
-              type="date"
-              value={filtros.fecha}
-              onChange={(value) => setFiltros(prev => ({ ...prev, fecha: value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-        </div>
-      </div>
 
-      {/* Lista de alertas */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">
-            Incidencias Detectadas
-            {filtros.estado === 'archivadas' && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
-                (Archivadas)
-              </span>
-            )}
-          </h3>
-          <span className="text-sm text-gray-500">
-            Mostrando {alertasFiltradas.length} alertas
-          </span>
-        </div>
-        
-        {alertasFiltradas.length === 0 ? (
-          <div className="text-center py-8">
-            <CheckCircle className="mx-auto mb-4 text-green-500" size={48} />
-            <h3 className="text-lg font-medium text-gray-700 mb-2">
-              {filtros.estado === 'archivadas' ? 'Sin alertas archivadas' : 'Excelente trabajo'}
-            </h3>
-            <p className="text-gray-600">
-              {filtros.estado === 'archivadas' 
-                ? 'No tienes alertas archivadas con los filtros aplicados'
-                : 'No hay alertas pendientes con los filtros aplicados'
-              }
-            </p>
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Moderadas</p>
+                <p className="text-2xl font-bold text-orange-600">{estadisticas.moderadas}</p>
+              </div>
+              <div className="p-2 bg-orange-100 rounded-full">
+                <AlertCircle className="text-orange-600" size={20} />
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {alertasFiltradas.slice(0, 10).map(alerta => {
-              const estaArchivada = alertasArchivadas.some(arch => arch.alert_id === alerta.id);
-              const isLoading = operationLoading === `archive-${alerta.id}` || operationLoading === `restore-${alerta.id}`;
-              
-              return (
-                <div key={alerta.id} className={`p-4 rounded-lg border-l-4 ${getAlertaColor(alerta.tipo)} ${estaArchivada ? 'opacity-75' : ''}`}>
+
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Leves</p>
+                <p className="text-2xl font-bold text-yellow-600">{estadisticas.leves}</p>
+              </div>
+              <div className="p-2 bg-yellow-100 rounded-full">
+                <Clock className="text-yellow-600" size={20} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtros */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Filtros</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
+              <OptimizedSelect
+                value={filtroEmpleado}
+                onChange={(value) => setFiltroEmpleado(value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Todos los empleados</option>
+                {users.filter(u => u.role !== 'admin').map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
+              </OptimizedSelect>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha específica</label>
+              <OptimizedInput
+                type="date"
+                value={filtroFecha}
+                onChange={(value) => setFiltroFecha(value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de alertas */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Incidencias Detectadas</h3>
+          
+          {alertasFiltradas.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="mx-auto mb-4 text-green-500" size={48} />
+              <h3 className="text-lg font-medium text-gray-700 mb-2">¡Excelente!</h3>
+              <p className="text-gray-600">No hay alertas pendientes con los filtros aplicados</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {alertasFiltradas.slice(0, 10).map(alerta => (
+                <div key={alerta.id} className={`p-4 rounded-lg border-l-4 ${getAlertaColor(alerta.tipo)}`}>
                   <div className="flex items-start space-x-3">
                     {getAlertaIcon(alerta.tipo)}
                     <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-medium text-gray-800">{alerta.empleado}</h4>
-                          <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                            alerta.tipo === 'critica' ? 'bg-red-100 text-red-800' :
-                            alerta.tipo === 'moderada' ? 'bg-orange-100 text-orange-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {getAlertaTipoTexto(alerta.tipo)}
-                          </span>
-                          {estaArchivada && (
-                            <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                              Archivada
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex space-x-2">
-                          {!estaArchivada ? (
-                            <button
-                              onClick={() => manejarArchivarAlerta(alerta)}
-                              disabled={isLoading}
-                              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 text-gray-700 text-xs rounded-md transition-colors flex items-center"
-                              title="Archivar alerta"
-                            >
-                              {isLoading ? (
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600 mr-1"></div>
-                              ) : (
-                                <CheckCircle size={14} className="mr-1" />
-                              )}
-                              Archivar
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => manejarRestaurarAlerta(alerta.id)}
-                              disabled={isLoading}
-                              className="px-3 py-1 bg-blue-100 hover:bg-blue-200 disabled:bg-blue-50 text-blue-700 text-xs rounded-md transition-colors flex items-center"
-                              title="Restaurar alerta"
-                            >
-                              {isLoading ? (
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></div>
-                              ) : (
-                                <AlertCircle size={14} className="mr-1" />
-                              )}
-                              Restaurar
-                            </button>
-                          )}
-                        </div>
+                      <div className="flex items-center space-x-2 mb-1">
+                        <h4 className="font-medium text-gray-800">{alerta.empleado}</h4>
+                        <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                          alerta.tipo === 'critica' ? 'bg-red-100 text-red-800' :
+                          alerta.tipo === 'moderada' ? 'bg-orange-100 text-orange-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {getAlertaTipoTexto(alerta.tipo)}
+                        </span>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">{alerta.departamento}</p>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -2269,32 +1898,16 @@ const AlertasPanel = () => {
                           <div className="font-bold text-red-600">{alerta.horasFaltantes.toFixed(1)}h</div>
                         </div>
                       </div>
-                      {estaArchivada && alerta.fechaArchivado && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          Archivada el: {new Date(alerta.fechaArchivado).toLocaleDateString('es-ES')}
-                          {alerta.archivedBy && ` por ${alerta.archivedBy}`}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
-              );
-            })}
-            
-            {alertasFiltradas.length > 10 && (
-              <div className="text-center py-2">
-                <p className="text-sm text-gray-500">
-                  ... y {alertasFiltradas.length - 10} alertas más. 
-                  {filtros.estado === 'activas' && ' Usa los filtros para gestionar mejor las alertas.'}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   const UserManagement = () => {
     const [newUser, setNewUser] = useState({
@@ -2602,30 +2215,26 @@ const AlertasPanel = () => {
     </div>
   );
 });
- 
 
 // Componente principal
 const App = () => {
-const {
-  users,
-  tasks,
-  categories,
-  diasJustificados,
-  alertasArchivadas, // AGREGAR ESTO
-  loading,
-  error,
-  createUser,
-  updateUser,
-  deleteUser,
-  createTask,
-  updateTask,
-  deleteTask,
-  createCategory,
-  deleteCategoryFromDB,
-  createJustifiedDay,
-  archivarAlerta, // AGREGAR ESTO
-  restaurarAlerta, // AGREGAR ESTO
-  loadAllData
+  const {
+    users,
+    tasks,
+    categories,
+    diasJustificados,
+    loading,
+    error,
+    createUser,
+    updateUser,
+    deleteUser,
+    createTask,
+    updateTask,
+    deleteTask,
+    createCategory,
+    deleteCategoryFromDB,
+    createJustifiedDay,
+    loadAllData
   } = useSupabaseData();
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -2696,14 +2305,11 @@ const {
             tasks={tasks}
             categories={categories}
             diasJustificados={diasJustificados}
-            alertasArchivadas={alertasArchivadas} // NUEVO
             createUser={createUser}
             updateUser={updateUser}
             deleteUser={deleteUser}
             createCategory={createCategory}
             deleteCategoryFromDB={deleteCategoryFromDB}
-            archivarAlerta={archivarAlerta} // NUEVO
-            restaurarAlerta={restaurarAlerta} // NUEVO
           />
         ) : (
           <EmployeePanel 
