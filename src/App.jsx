@@ -1,5 +1,3 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle, Send, MessageSquare, FileText, ArrowRight, PlayCircle, CheckSquare } from 'lucide-react';
 
 // Configuración de Supabase
 const SUPABASE_URL = 'https://enpgabqnvggkzlqjhkfc.supabase.co';
@@ -17,39 +15,41 @@ class SupabaseClient {
     };
   }
 
-  async request(endpoint, options = {}) {
-    const url = `${this.url}/rest/v1${endpoint}`;
-    const config = {
-      headers: {
-        ...this.headers,
-        'Prefer': 'return=representation'
-      },
-      ...options
-    };
+async request(endpoint, options = {}) {
+  const url = `${this.url}/rest/v1${endpoint}`;
+  const config = {
+    headers: {
+      ...this.headers,
+      // Agregar header para que Supabase devuelva los datos insertados
+      'Prefer': 'return=representation'
+    },
+    ...options
+  };
 
-    try {
-      const response = await fetch(url, config);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const contentType = response.headers.get('content-type');
-      const hasContent = response.headers.get('content-length') !== '0';
-      
-      let data = null;
-      if (contentType?.includes('application/json') && hasContent) {
-        const text = await response.text();
-        if (text.trim()) {
-          data = JSON.parse(text);
-        }
-      }
-      
-      return { data, error: null };
-    } catch (error) {
-      console.error('Supabase request error:', error);
-      return { data: null, error };
+  try {
+    const response = await fetch(url, config);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+    
+    // Verificar si la respuesta tiene contenido antes de parsear JSON
+    const contentType = response.headers.get('content-type');
+    const hasContent = response.headers.get('content-length') !== '0';
+    
+    let data = null;
+    if (contentType?.includes('application/json') && hasContent) {
+      const text = await response.text();
+      if (text.trim()) {
+        data = JSON.parse(text);
+      }
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Supabase request error:', error);
+    return { data: null, error };
   }
+}
 
   async select(table, query = '*') {
     return this.request(`/${table}?select=${query}`);
@@ -97,7 +97,6 @@ const useSupabaseData = () => {
   const [categories, setCategories] = useState({});
   const [diasJustificados, setDiasJustificados] = useState([]);
   const [alertasArchivadas, setAlertasArchivadas] = useState([]);
-  const [assignedTasks, setAssignedTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -170,6 +169,7 @@ const useSupabaseData = () => {
 
         if (carlosUser) {
           const demoTasks = [
+            // Día actual
             { 
               user_id: carlosUser.id, 
               description: 'Optimización SEO página principal', 
@@ -186,6 +186,7 @@ const useSupabaseData = () => {
               date: new Date().toISOString().split('T')[0], 
               horario: '11:30-13:30' 
             },
+            // Día anterior
             { 
               user_id: carlosUser.id, 
               description: 'Análisis keywords competencia', 
@@ -214,20 +215,17 @@ const useSupabaseData = () => {
   // Cargar todos los datos
   const loadAllData = useCallback(async () => {
     try {
-      const [usersRes, tasksRes, categoriesRes, justifiedRes, archivedRes, assignedRes] = await Promise.all([
-        supabase.select('users'),
-        supabase.select('tasks'),
-        supabase.select('categories'),
-        supabase.select('justified_days'),
-        supabase.select('archived_alerts'),
-        supabase.select('assigned_tasks')
-      ]);
-      
+      const [usersRes, tasksRes, categoriesRes, justifiedRes, archivedRes] = await Promise.all([
+  supabase.select('users'),
+  supabase.select('tasks'),
+  supabase.select('categories'),
+  supabase.select('justified_days'),
+  supabase.select('archived_alerts') // NUEVO
+]);
       if (usersRes.data) setUsers(usersRes.data);
       if (tasksRes.data) setTasks(tasksRes.data);
       if (justifiedRes.data) setDiasJustificados(justifiedRes.data);
       if (archivedRes.data) setAlertasArchivadas(archivedRes.data);
-      if (assignedRes.data) setAssignedTasks(assignedRes.data);
 
       // Procesar categorías
       if (categoriesRes.data) {
@@ -321,40 +319,6 @@ const useSupabaseData = () => {
     }
   }, [loadAllData]);
 
-  // Funciones CRUD para tareas asignadas
-  const createAssignedTask = useCallback(async (taskData) => {
-    try {
-      const { data, error } = await supabase.insert('assigned_tasks', taskData);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const updateAssignedTask = useCallback(async (taskId, taskData) => {
-    try {
-      const { data, error } = await supabase.update('assigned_tasks', taskData, `id=eq.${taskId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const deleteAssignedTask = useCallback(async (taskId) => {
-    try {
-      const { data, error } = await supabase.delete('assigned_tasks', `id=eq.${taskId}`);
-      if (error) throw error;
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
   // Funciones para categorías
   const createCategory = useCallback(async (department, name) => {
     try {
@@ -389,58 +353,56 @@ const useSupabaseData = () => {
       return { success: false, error: err.message };
     }
   }, [loadAllData]);
+// AGREGAR AQUÍ LAS NUEVAS FUNCIONES ↓
+const archivarAlerta = useCallback(async (alerta, archivedBy = 'admin') => {
+  try {
+    const alertData = {
+      alert_id: alerta.id,
+      empleado_id: alerta.empleadoId,
+      empleado_name: alerta.empleado,
+      fecha: alerta.fecha,
+      tipo: alerta.tipo,
+      horas_objetivo: alerta.horasObjetivo,
+      horas_registradas: alerta.horasRegistradas,
+      horas_faltantes: alerta.horasFaltantes,
+      departamento: alerta.departamento,
+      archived_by: archivedBy
+    };
 
-  // Funciones para alertas archivadas
-  const archivarAlerta = useCallback(async (alerta, archivedBy = 'admin') => {
-    try {
-      const alertData = {
-        alert_id: alerta.id,
-        empleado_id: alerta.empleadoId,
-        empleado_name: alerta.empleado,
-        fecha: alerta.fecha,
-        tipo: alerta.tipo,
-        horas_objetivo: alerta.horasObjetivo,
-        horas_registradas: alerta.horasRegistradas,
-        horas_faltantes: alerta.horasFaltantes,
-        departamento: alerta.departamento,
-        archived_by: archivedBy
-      };
+    const { data, error } = await supabase.insert('archived_alerts', alertData);
+    if (error) throw error;
+    
+    await loadAllData();
+    return { success: true };
+  } catch (err) {
+    console.error('Error archiving alert:', err);
+    return { success: false, error: err.message };
+  }
+}, [loadAllData]);
 
-      const { data, error } = await supabase.insert('archived_alerts', alertData);
-      if (error) throw error;
-      
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      console.error('Error archiving alert:', err);
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
-  const restaurarAlerta = useCallback(async (alertId) => {
-    try {
-      const { data, error } = await supabase.delete('archived_alerts', `alert_id=eq.${alertId}`);
-      if (error) throw error;
-      
-      await loadAllData();
-      return { success: true };
-    } catch (err) {
-      console.error('Error restoring alert:', err);
-      return { success: false, error: err.message };
-    }
-  }, [loadAllData]);
-
+const restaurarAlerta = useCallback(async (alertId) => {
+  try {
+    const { data, error } = await supabase.delete('archived_alerts', `alert_id=eq.${alertId}`);
+    if (error) throw error;
+    
+    await loadAllData();
+    return { success: true };
+  } catch (err) {
+    console.error('Error restoring alert:', err);
+    return { success: false, error: err.message };
+  }
+}, [loadAllData]);
   useEffect(() => {
     initializeData();
   }, [initializeData]);
 
+ 
   return {
     users,
     tasks,
     categories,
     diasJustificados,
-    alertasArchivadas,
-    assignedTasks,
+    alertasArchivadas, // NUEVO
     loading,
     error,
     createUser,
@@ -449,17 +411,17 @@ const useSupabaseData = () => {
     createTask,
     updateTask,
     deleteTask,
-    createAssignedTask,
-    updateAssignedTask,
-    deleteAssignedTask,
     createCategory,
     deleteCategoryFromDB,
     createJustifiedDay,
-    archivarAlerta,
-    restaurarAlerta,
+    archivarAlerta, // NUEVO
+    restaurarAlerta, // NUEVO
     loadAllData
   };
 };
+
+
+
 // Componente Input optimizado para evitar pérdida de foco
 const OptimizedInput = memo(({ value, onChange, placeholder, type = 'text', className = '', ...props }) => {
   const handleChange = useCallback((e) => {
@@ -652,7 +614,7 @@ const Login = memo(({ onLogin, loginError, users }) => {
             <div>• juan / abc123</div>
             <div>• maria / def456</div>
             <div>• carlos / demo123</div>
-            <div>• admin / admin1</div>
+            <div>• admin / admin2</div>
           </div>
         </div>
       </div>
@@ -722,245 +684,6 @@ const Timer = memo(({ task, onUpdate, isActive, onToggle }) => {
   );
 });
 
-// Componente Tareas Asignadas para Empleados
-const TareasAsignadas = memo(({ user, assignedTasks, updateAssignedTask }) => {
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [employeeComment, setEmployeeComment] = useState('');
-
-  const userAssignedTasks = useMemo(() => 
-    assignedTasks.filter(task => task.assigned_to === user.id), 
-    [assignedTasks, user.id]
-  );
-
-  const pendingTasks = useMemo(() => 
-    userAssignedTasks.filter(task => task.status === 'pendiente'), 
-    [userAssignedTasks]
-  );
-
-  const inProgressTasks = useMemo(() => 
-    userAssignedTasks.filter(task => task.status === 'en_progreso'), 
-    [userAssignedTasks]
-  );
-
-  const completedTasks = useMemo(() => 
-    userAssignedTasks.filter(task => task.status === 'completada'), 
-    [userAssignedTasks]
-  );
-
-  const handleStartTask = useCallback(async (task) => {
-    await updateAssignedTask(task.id, { status: 'en_progreso' });
-  }, [updateAssignedTask]);
-
-  const handleCompleteTask = useCallback(async (task) => {
-    const updateData = {
-      status: 'completada',
-      completed_at: new Date().toISOString(),
-      employee_comments: employeeComment.trim() || null
-    };
-    
-    await updateAssignedTask(task.id, updateData);
-    setSelectedTask(null);
-    setEmployeeComment('');
-  }, [updateAssignedTask, employeeComment]);
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'alta': return 'bg-red-100 text-red-800 border-red-200';
-      case 'media': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'baja': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Sin fecha límite';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', { 
-      day: 'numeric', 
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  if (userAssignedTasks.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          <Send className="mr-2" size={20} />
-          Tareas Asignadas
-        </h3>
-        <div className="text-center py-4">
-          <Send className="mx-auto mb-3 text-gray-400" size={32} />
-          <p className="text-gray-600">No tienes tareas asignadas por el momento</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border p-6">
-      <h3 className="text-lg font-semibold mb-4 flex items-center">
-        <Send className="mr-2" size={20} />
-        Tareas Asignadas
-        <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
-          {userAssignedTasks.length}
-        </span>
-      </h3>
-
-      <div className="space-y-6">
-        {/* Tareas Pendientes */}
-        {pendingTasks.length > 0 && (
-          <div>
-            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
-              <Clock className="mr-2 text-gray-500" size={16} />
-              Pendientes ({pendingTasks.length})
-            </h4>
-            <div className="space-y-3">
-              {pendingTasks.map(task => (
-                <div key={task.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                  <div className="flex items-start justify-between mb-2">
-                    <h5 className="font-medium text-gray-800">{task.title}</h5>
-                    <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(task.priority)}`}>
-                      {task.priority?.charAt(0).toUpperCase() + task.priority?.slice(1)}
-                    </span>
-                  </div>
-                  {task.description && (
-                    <p className="text-gray-600 text-sm mb-3">{task.description}</p>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      Fecha límite: {formatDate(task.due_date)}
-                    </span>
-                    <button
-                      onClick={() => handleStartTask(task)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm flex items-center transition-colors"
-                    >
-                      <PlayCircle className="mr-2" size={16} />
-                      Iniciar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tareas En Progreso */}
-        {inProgressTasks.length > 0 && (
-          <div>
-            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
-              <Activity className="mr-2 text-blue-500" size={16} />
-              En Progreso ({inProgressTasks.length})
-            </h4>
-            <div className="space-y-3">
-              {inProgressTasks.map(task => (
-                <div key={task.id} className="border border-blue-200 rounded-lg p-4 bg-blue-50">
-                  <div className="flex items-start justify-between mb-2">
-                    <h5 className="font-medium text-gray-800">{task.title}</h5>
-                    <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(task.priority)}`}>
-                      {task.priority?.charAt(0).toUpperCase() + task.priority?.slice(1)}
-                    </span>
-                  </div>
-                  {task.description && (
-                    <p className="text-gray-600 text-sm mb-3">{task.description}</p>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      Fecha límite: {formatDate(task.due_date)}
-                    </span>
-                    <button
-                      onClick={() => setSelectedTask(task)}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm flex items-center transition-colors"
-                    >
-                      <CheckSquare className="mr-2" size={16} />
-                      Completar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tareas Completadas */}
-        {completedTasks.length > 0 && (
-          <div>
-            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
-              <CheckCircle className="mr-2 text-green-500" size={16} />
-              Completadas Recientes ({Math.min(completedTasks.length, 3)})
-            </h4>
-            <div className="space-y-3">
-              {completedTasks.slice(0, 3).map(task => (
-                <div key={task.id} className="border border-green-200 rounded-lg p-4 bg-green-50">
-                  <div className="flex items-start justify-between mb-2">
-                    <h5 className="font-medium text-gray-800">{task.title}</h5>
-                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                      Completada
-                    </span>
-                  </div>
-                  {task.completed_at && (
-                    <p className="text-gray-600 text-sm">
-                      Completada el: {formatDate(task.completed_at)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Modal para completar tarea */}
-      {selectedTask && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center mb-4">
-              <CheckSquare className="text-green-600 mr-3" size={24} />
-              <h3 className="text-lg font-semibold text-gray-800">Completar Tarea</h3>
-            </div>
-            
-            <div className="mb-4">
-              <h4 className="font-medium text-gray-800 mb-2">{selectedTask.title}</h4>
-              {selectedTask.description && (
-                <p className="text-gray-600 text-sm mb-3">{selectedTask.description}</p>
-              )}
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Comentarios (opcional)
-              </label>
-              <textarea
-                value={employeeComment}
-                onChange={(e) => setEmployeeComment(e.target.value)}
-                placeholder="Describe cómo completaste la tarea, resultados obtenidos, etc..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md h-20 resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              />
-            </div>
-
-            <div className="flex space-x-3 justify-end">
-              <button
-                onClick={() => {
-                  setSelectedTask(null);
-                  setEmployeeComment('');
-                }}
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md transition-colors duration-200"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleCompleteTask(selectedTask)}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors duration-200"
-              >
-                Marcar como Completada
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-});
 // Componente Avisos para empleados
 const AvisosEmpleado = memo(({ user, tasks, diasJustificados, createJustifiedDay }) => {
   const [avisos, setAvisos] = useState([]);
@@ -1127,7 +850,7 @@ const AvisosEmpleado = memo(({ user, tasks, diasJustificados, createJustifiedDay
                     onClick={() => justificarDia(aviso)}
                     className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 text-sm rounded-md transition-colors border border-blue-200"
                   >
-                    🗓️ Marcar como "Vacaciones o Festivo"
+                    🏖️ Marcar como "Vacaciones o Festivo"
                   </button>
                 </div>
               </div>
@@ -1153,13 +876,11 @@ const EmployeePanel = memo(({
   categories, 
   tasks, 
   diasJustificados, 
-  assignedTasks,
   createTask, 
   updateTask, 
   deleteTask, 
   createCategory, 
-  createJustifiedDay,
-  updateAssignedTask
+  createJustifiedDay 
 }) => {
   const [newTask, setNewTask] = useState({ 
     description: '', 
@@ -1190,7 +911,7 @@ const EmployeePanel = memo(({
     [todayTasks]
   );
 
-  // Función para calcular el siguiente horario
+  // Función para calcular el siguiente horario (restaurada del código original)
   const calculateNextHorario = useCallback((hours, date) => {
     const tasksForDate = tasks.filter(task => 
       task.user_id === user.id && task.date === date
@@ -1366,13 +1087,6 @@ const EmployeePanel = memo(({
           <span className="ml-2 font-medium text-gray-800">{user.department}</span>
         </div>
       </div>
-
-      {/* Tareas Asignadas */}
-      <TareasAsignadas 
-        user={user}
-        assignedTasks={assignedTasks}
-        updateAssignedTask={updateAssignedTask}
-      />
 
       {/* Formulario nueva tarea */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -1742,337 +1456,25 @@ const EmployeePanel = memo(({
     </div>
   );
 });
-// Panel de administrador COMPLETO
+
+// Panel de administrador COMPLETO - Reemplaza el AdminPanel en App.jsx
 const AdminPanel = memo(({ 
-  users,
-  tasks,
-  categories,
-  diasJustificados,
+  users,           // ← AGREGAR
+  tasks,           // ← AGREGAR  
+  categories,      // ← AGREGAR
+  diasJustificados, // ← AGREGAR
   alertasArchivadas,
-  assignedTasks,
   createUser,
   updateUser,
   deleteUser,
   createCategory,
   deleteCategoryFromDB,
   archivarAlerta,
-  restaurarAlerta,
-  createAssignedTask,
-  updateAssignedTask,
-  deleteAssignedTask
+  restaurarAlerta
 }) => {
   const [activeTab, setActiveTab] = useState('users');
 
-  // Componente de Gestión de Tareas Asignadas
-  const AssignedTasksManagement = () => {
-    const [newAssignedTask, setNewAssignedTask] = useState({
-      title: '',
-      description: '',
-      assigned_to: '',
-      priority: 'media',
-      due_date: '',
-      admin_comments: ''
-    });
-    const [showNewTaskForm, setShowNewTaskForm] = useState(false);
-    const [selectedTask, setSelectedTask] = useState(null);
-    const [filters, setFilters] = useState({
-      empleado: '',
-      status: 'todas',
-      priority: 'todas'
-    });
-
-    const handleCreateAssignedTask = async () => {
-      if (!newAssignedTask.title.trim() || !newAssignedTask.assigned_to) {
-        alert('Por favor, complete al menos el título y seleccione un empleado');
-        return;
-      }
-
-      const taskData = {
-        ...newAssignedTask,
-        assigned_by: users.find(u => u.role === 'admin')?.id,
-        status: 'pendiente'
-      };
-
-      const result = await createAssignedTask(taskData);
-      if (result.success) {
-        setNewAssignedTask({
-          title: '',
-          description: '',
-          assigned_to: '',
-          priority: 'media',
-          due_date: '',
-          admin_comments: ''
-        });
-        setShowNewTaskForm(false);
-      }
-    };
-
-    const handleDeleteAssignedTask = async (taskId) => {
-      if (window.confirm('¿Está seguro de eliminar esta tarea asignada?')) {
-        await deleteAssignedTask(taskId);
-      }
-    };
-
-    const filteredAssignedTasks = useMemo(() => {
-      return assignedTasks.filter(task => {
-        if (filters.empleado && task.assigned_to !== parseInt(filters.empleado)) return false;
-        if (filters.status !== 'todas' && task.status !== filters.status) return false;
-        if (filters.priority !== 'todas' && task.priority !== filters.priority) return false;
-        return true;
-      });
-    }, [assignedTasks, filters]);
-
-    const nonAdminUsers = users.filter(u => u.role !== 'admin');
-
-    const getStatusColor = (status) => {
-      switch (status) {
-        case 'pendiente': return 'bg-gray-100 text-gray-800';
-        case 'en_progreso': return 'bg-blue-100 text-blue-800';
-        case 'completada': return 'bg-green-100 text-green-800';
-        default: return 'bg-gray-100 text-gray-800';
-      }
-    };
-
-    const getPriorityColor = (priority) => {
-      switch (priority) {
-        case 'alta': return 'bg-red-100 text-red-800';
-        case 'media': return 'bg-yellow-100 text-yellow-800';
-        case 'baja': return 'bg-green-100 text-green-800';
-        default: return 'bg-gray-100 text-gray-800';
-      }
-    };
-
-    const formatDate = (dateString) => {
-      if (!dateString) return 'Sin fecha límite';
-      const date = new Date(dateString);
-      return date.toLocaleDateString('es-ES', { 
-        day: 'numeric', 
-        month: 'short',
-        year: 'numeric'
-      });
-    };
-
-    const taskStats = useMemo(() => {
-      const total = assignedTasks.length;
-      const pendientes = assignedTasks.filter(t => t.status === 'pendiente').length;
-      const enProgreso = assignedTasks.filter(t => t.status === 'en_progreso').length;
-      const completadas = assignedTasks.filter(t => t.status === 'completada').length;
-      
-      return { total, pendientes, enProgreso, completadas };
-    }, [assignedTasks]);
-
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Gestión de Tareas Asignadas</h2>
-          <button
-            onClick={() => setShowNewTaskForm(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center transition-colors duration-200"
-          >
-            <Send className="mr-2" size={16} />
-            Asignar Nueva Tarea
-          </button>
-        </div>
-
-        {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Asignadas</p>
-                <p className="text-2xl font-bold text-gray-800">{taskStats.total}</p>
-              </div>
-              <div className="p-2 bg-gray-100 rounded-full">
-                <FileText className="text-gray-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Pendientes</p>
-                <p className="text-2xl font-bold text-gray-600">{taskStats.pendientes}</p>
-              </div>
-              <div className="p-2 bg-gray-100 rounded-full">
-                <Clock className="text-gray-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">En Progreso</p>
-                <p className="text-2xl font-bold text-blue-600">{taskStats.enProgreso}</p>
-              </div>
-              <div className="p-2 bg-blue-100 rounded-full">
-                <PlayCircle className="text-blue-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Completadas</p>
-                <p className="text-2xl font-bold text-green-600">{taskStats.completadas}</p>
-              </div>
-              <div className="p-2 bg-green-100 rounded-full">
-                <CheckCircle className="text-green-600" size={20} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Formulario */}
-        {showNewTaskForm && (
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h3 className="text-lg font-semibold mb-4">Asignar Nueva Tarea</h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Título de la tarea <span className="text-red-500">*</span>
-                  </label>
-                  <OptimizedInput
-                    value={newAssignedTask.title}
-                    onChange={(value) => setNewAssignedTask(prev => ({ ...prev, title: value }))}
-                    placeholder="Ej: Revisar propuesta comercial"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Asignar a <span className="text-red-500">*</span>
-                  </label>
-                  <OptimizedSelect
-                    value={newAssignedTask.assigned_to}
-                    onChange={(value) => setNewAssignedTask(prev => ({ ...prev, assigned_to: value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="">Seleccionar empleado</option>
-                    {nonAdminUsers.map(user => (
-                      <option key={user.id} value={user.id}>{user.name} - {user.department}</option>
-                    ))}
-                  </OptimizedSelect>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                <textarea
-                  value={newAssignedTask.description}
-                  onChange={(e) => setNewAssignedTask(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Descripción detallada de la tarea..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md h-20 resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
-                  <OptimizedSelect
-                    value={newAssignedTask.priority}
-                    onChange={(value) => setNewAssignedTask(prev => ({ ...prev, priority: value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="baja">Baja</option>
-                    <option value="media">Media</option>
-                    <option value="alta">Alta</option>
-                  </OptimizedSelect>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha límite</label>
-                  <OptimizedInput
-                    type="date"
-                    value={newAssignedTask.due_date}
-                    onChange={(value) => setNewAssignedTask(prev => ({ ...prev, due_date: value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Instrucciones adicionales</label>
-                <textarea
-                  value={newAssignedTask.admin_comments}
-                  onChange={(e) => setNewAssignedTask(prev => ({ ...prev, admin_comments: e.target.value }))}
-                  placeholder="Instrucciones específicas, recursos necesarios, contactos relevantes..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md h-20 resize-none"
-                />
-              </div>
-
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleCreateAssignedTask}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-                >
-                  Asignar Tarea
-                </button>
-                <button
-                  onClick={() => setShowNewTaskForm(false)}
-                  className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Filtros */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h3 className="text-lg font-semibold mb-4">Filtros</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Empleado</label>
-              <OptimizedSelect
-                value={filters.empleado}
-                onChange={(value) => setFilters(prev => ({ ...prev, empleado: value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              >
-                <option value="">Todos los empleados</option>
-                {nonAdminUsers.map(user => (
-                  <option key={user.id} value={user.id}>{user.name}</option>
-                ))}
-              </OptimizedSelect>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-              <OptimizedSelect
-                value={filters.status}
-                onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              >
-                <option value="todas">Todos los estados</option>
-                <option value="pendiente">Pendientes</option>
-                <option value="en_progreso">En progreso</option>
-                <option value="completada">Completadas</option>
-              </OptimizedSelect>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
-              <OptimizedSelect
-                value={filters.priority}
-                onChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              >
-                <option value="todas">Todas las prioridades</option>
-                <option value="alta">Alta</option>
-                <option value="media">Media</option>
-                <option value="baja">Baja</option>
-              </OptimizedSelect>
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de tareas asignadas continúa en la siguiente parte... */}
-      </div>
-    );
-  };
-
- // Componente Analytics
+  // Componente Analytics
   const AnalyticsPanel = () => {
      const { users: contextUsers, tasks: contextTasks, categories: contextCategories } = useSupabaseData();
      const users = contextUsers;
@@ -2258,598 +1660,7 @@ const AdminPanel = memo(({
     );
   };
 
-
-  // Componente Gestión de Usuarios COMPLETO
-  const UserManagement = () => {
-    const [newUser, setNewUser] = useState({
-      name: '', username: '', password: '', email: '', 
-      department: '', horas_objetivo: 8, hora_inicio: '09:00'
-    });
-    const [showNewUserForm, setShowNewUserForm] = useState(false);
-    const [editingUser, setEditingUser] = useState(null);
-    const [deleteUserConfirm, setDeleteUserConfirm] = useState(null);
-
-    const handleAddUser = async () => {
-      if (!newUser.name || !newUser.username || !newUser.password || !newUser.email || !newUser.department) {
-        alert('Por favor, complete todos los campos obligatorios');
-        return;
-      }
-      
-      if (users.some(u => u.username === newUser.username)) {
-        alert('El nombre de usuario ya existe');
-        return;
-      }
-
-      const result = await createUser({
-        ...newUser,
-        horas_objetivo: parseFloat(newUser.horas_objetivo)
-      });
-
-      if (result.success) {
-        setNewUser({
-          name: '', username: '', password: '', email: '', 
-          department: '', horas_objetivo: 8, hora_inicio: '09:00'
-        });
-        setShowNewUserForm(false);
-      } else {
-        alert('Error al crear usuario: ' + result.error);
-      }
-    };
-
-    const handleEditUser = (user) => {
-      setEditingUser({ ...user });
-    };
-
-    const handleUpdateUser = async () => {
-      if (!editingUser.name || !editingUser.username || !editingUser.email || !editingUser.department) {
-        alert('Por favor, complete todos los campos obligatorios');
-        return;
-      }
-
-      const result = await updateUser(editingUser.id, {
-        name: editingUser.name,
-        username: editingUser.username,
-        email: editingUser.email,
-        department: editingUser.department,
-        horas_objetivo: parseFloat(editingUser.horas_objetivo),
-        hora_inicio: editingUser.hora_inicio
-      });
-
-      if (result.success) {
-        setEditingUser(null);
-      } else {
-        alert('Error al actualizar usuario: ' + result.error);
-      }
-    };
-
-    const handleDeleteUser = (user) => {
-      if (user.username === 'admin') {
-        alert('No se puede eliminar el usuario administrador');
-        return;
-      }
-      setDeleteUserConfirm(user);
-    };
-
-    const confirmDeleteUser = async () => {
-      if (deleteUserConfirm) {
-        const result = await deleteUser(deleteUserConfirm.id);
-        if (result.success) {
-          setDeleteUserConfirm(null);
-        } else {
-          alert('Error al eliminar usuario: ' + result.error);
-        }
-      }
-    };
-
-    const nonAdminUsers = users.filter(u => u.role !== 'admin');
-
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Gestión de Usuarios</h2>
-          <button
-            onClick={() => setShowNewUserForm(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center transition-colors duration-200"
-          >
-            <Plus className="mr-2" size={16} />
-            Nuevo Usuario
-          </button>
-        </div>
-
-        {/* Estadísticas de usuarios */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Usuarios</p>
-                <p className="text-2xl font-bold text-blue-600">{nonAdminUsers.length}</p>
-              </div>
-              <div className="p-2 bg-blue-100 rounded-full">
-                <Users className="text-blue-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Departamentos</p>
-                <p className="text-2xl font-bold text-green-600">{new Set(nonAdminUsers.map(u => u.department)).size}</p>
-              </div>
-              <div className="p-2 bg-green-100 rounded-full">
-                <Building className="text-green-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Promedio Horas Objetivo</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {nonAdminUsers.length > 0 ? 
-                    (nonAdminUsers.reduce((sum, u) => sum + u.horas_objetivo, 0) / nonAdminUsers.length).toFixed(1) : 0}h
-                </p>
-              </div>
-              <div className="p-2 bg-purple-100 rounded-full">
-                <Target className="text-purple-600" size={20} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Formulario nuevo usuario */}
-        {showNewUserForm && (
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h3 className="text-lg font-semibold mb-4">Crear Nuevo Usuario</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre completo <span className="text-red-500">*</span>
-                </label>
-                <OptimizedInput
-                  value={newUser.name}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, name: value }))}
-                  placeholder="Ej: Juan Pérez"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Usuario <span className="text-red-500">*</span>
-                </label>
-                <OptimizedInput
-                  value={newUser.username}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, username: value }))}
-                  placeholder="Ej: juan.perez"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña <span className="text-red-500">*</span>
-                </label>
-                <OptimizedInput
-                  type="password"
-                  value={newUser.password}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, password: value }))}
-                  placeholder="Contraseña"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <OptimizedInput
-                  type="email"
-                  value={newUser.email}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, email: value }))}
-                  placeholder="Ej: juan@empresa.com"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Departamento <span className="text-red-500">*</span>
-                </label>
-                <OptimizedSelect
-                  value={newUser.department}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, department: value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="">Seleccionar departamento</option>
-                  {departments.map(dept => (
-                    <option key={dept} value={dept}>{dept}</option>
-                  ))}
-                </OptimizedSelect>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Horas objetivo</label>
-                <OptimizedInput
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="12"
-                  value={newUser.horas_objetivo}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, horas_objetivo: value }))}
-                  placeholder="8"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hora de inicio</label>
-                <OptimizedInput
-                  type="time"
-                  value={newUser.hora_inicio}
-                  onChange={(value) => setNewUser(prev => ({ ...prev, hora_inicio: value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={handleAddUser}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-              >
-                Crear Usuario
-              </button>
-              <button
-                onClick={() => setShowNewUserForm(false)}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Lista de usuarios */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {nonAdminUsers.map(user => (
-            <div key={user.id} className="bg-white rounded-lg shadow-sm border p-6">
-              {editingUser?.id === user.id ? (
-                // Modo edición
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-lg text-blue-600">Editando Usuario</h4>
-                  <div className="space-y-3">
-                    <OptimizedInput
-                      value={editingUser.name}
-                      onChange={(value) => setEditingUser(prev => ({ ...prev, name: value }))}
-                      placeholder="Nombre completo"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                    <OptimizedInput
-                      value={editingUser.username}
-                      onChange={(value) => setEditingUser(prev => ({ ...prev, username: value }))}
-                      placeholder="Usuario"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                    <OptimizedInput
-                      type="email"
-                      value={editingUser.email}
-                      onChange={(value) => setEditingUser(prev => ({ ...prev, email: value }))}
-                      placeholder="Email"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                    <OptimizedSelect
-                      value={editingUser.department}
-                      onChange={(value) => setEditingUser(prev => ({ ...prev, department: value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    >
-                      {departments.map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </OptimizedSelect>
-                    <div className="grid grid-cols-2 gap-2">
-                      <OptimizedInput
-                        type="number"
-                        step="0.5"
-                        value={editingUser.horas_objetivo}
-                        onChange={(value) => setEditingUser(prev => ({ ...prev, horas_objetivo: parseFloat(value) }))}
-                        placeholder="Horas objetivo"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      />
-                      <OptimizedInput
-                        type="time"
-                        value={editingUser.hora_inicio}
-                        onChange={(value) => setEditingUser(prev => ({ ...prev, hora_inicio: value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={handleUpdateUser}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm"
-                    >
-                      Guardar
-                    </button>
-                    <button
-                      onClick={() => setEditingUser(null)}
-                      className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-3 rounded-md text-sm"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                // Modo vista
-                <div>
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-lg">{user.name}</h4>
-                    <p className="text-gray-600">@{user.username}</p>
-                  </div>
-                  <div className="space-y-2 text-sm mb-4">
-                    <div><span className="text-gray-600">Email:</span> {user.email}</div>
-                    <div><span className="text-gray-600">Departamento:</span> {user.department}</div>
-                    <div><span className="text-gray-600">Horas objetivo:</span> {user.horas_objetivo}h</div>
-                    <div><span className="text-gray-600">Hora inicio:</span> {user.hora_inicio}</div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEditUser(user)}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md text-sm"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDeleteUser(user)}
-                      className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Modal de confirmación de eliminación */}
-        {deleteUserConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-              <div className="flex items-center mb-4">
-                <AlertTriangle className="text-red-600 mr-3" size={24} />
-                <h3 className="text-lg font-semibold text-gray-800">Confirmar Eliminación</h3>
-              </div>
-              <p className="text-gray-600 mb-6">
-                ¿Está seguro de que desea eliminar al usuario <strong>{deleteUserConfirm.name}</strong>? 
-                Esta acción no se puede deshacer y eliminará también todas sus tareas asociadas.
-              </p>
-              <div className="flex space-x-3 justify-end">
-                <button
-                  onClick={() => setDeleteUserConfirm(null)}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md transition-colors duration-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeleteUser}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors duration-200"
-                >
-                  Eliminar Usuario
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-// Componente Gestión de Categorías COMPLETO
-  const CategoryManagement = () => {
-    const [newCategory, setNewCategory] = useState({ department: '', name: '' });
-    const [editingCategory, setEditingCategory] = useState(null);
-    const [deleteConfirm, setDeleteConfirm] = useState(null);
-
-    const handleAddCategory = async () => {
-      if (!newCategory.department || !newCategory.name.trim()) {
-        alert('Por favor, complete todos los campos');
-        return;
-      }
-
-      // Verificar si la categoría ya existe en el departamento
-      const existingCategories = categories[newCategory.department] || [];
-      if (existingCategories.includes(newCategory.name.trim())) {
-        alert('Esta categoría ya existe en el departamento seleccionado');
-        return;
-      }
-
-      const result = await createCategory(newCategory.department, newCategory.name.trim());
-      if (result.success) {
-        setNewCategory({ department: '', name: '' });
-      } else {
-        alert('Error al crear la categoría: ' + result.error);
-      }
-    };
-
-    const handleDeleteCategory = (department, categoryName) => {
-      setDeleteConfirm({ department, categoryName });
-    };
-
-    const confirmDeleteCategory = async () => {
-      if (deleteConfirm) {
-        const result = await deleteCategoryFromDB(deleteConfirm.department, deleteConfirm.categoryName);
-        if (result.success) {
-          setDeleteConfirm(null);
-        } else {
-          alert('Error al eliminar la categoría: ' + result.error);
-        }
-      }
-    };
-
-    const totalCategories = Object.values(categories).reduce((sum, cats) => sum + cats.length, 0);
-    const departmentsWithCategories = Object.keys(categories).length;
-
-    return (
-      <div className="space-y-6">
-        <h2 className="text-xl font-semibold">Gestión de Categorías</h2>
-
-        {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Categorías</p>
-                <p className="text-2xl font-bold text-blue-600">{totalCategories}</p>
-              </div>
-              <div className="p-2 bg-blue-100 rounded-full">
-                <Settings className="text-blue-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Departamentos</p>
-                <p className="text-2xl font-bold text-green-600">{departments.length}</p>
-              </div>
-              <div className="p-2 bg-green-100 rounded-full">
-                <Building className="text-green-600" size={20} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Promedio por Depto.</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {departments.length > 0 ? (totalCategories / departments.length).toFixed(1) : 0}
-                </p>
-              </div>
-              <div className="p-2 bg-purple-100 rounded-full">
-                <Target className="text-purple-600" size={20} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Formulario agregar categoría */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h3 className="text-lg font-semibold mb-4">Agregar Nueva Categoría</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Departamento <span className="text-red-500">*</span>
-              </label>
-              <OptimizedSelect
-                value={newCategory.department}
-                onChange={(value) => setNewCategory(prev => ({ ...prev, department: value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              >
-                <option value="">Seleccionar departamento</option>
-                {departments.map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </OptimizedSelect>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre de la categoría <span className="text-red-500">*</span>
-              </label>
-              <OptimizedInput
-                value={newCategory.name}
-                onChange={(value) => setNewCategory(prev => ({ ...prev, name: value }))}
-                placeholder="Ej: Email Marketing"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
-              />
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={handleAddCategory}
-                disabled={!newCategory.department || !newCategory.name.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Agregar Categoría
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de categorías por departamento */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {departments.map(dept => {
-            const deptCategories = categories[dept] || [];
-            return (
-              <div key={dept} className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-semibold text-lg">{dept}</h4>
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                    {deptCategories.length} categorías
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {deptCategories.length > 0 ? deptCategories.map(category => {
-                    // Calcular cuántas tareas usan esta categoría
-                    const taskCount = tasks.filter(task => task.category === category).length;
-                    
-                    return (
-                      <div key={category} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                        <div>
-                          <span className="font-medium">{category}</span>
-                          <div className="text-xs text-gray-500">{taskCount} tareas registradas</div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteCategory(dept, category)}
-                          className="text-red-600 hover:bg-red-100 p-2 rounded-full transition-colors"
-                          title="Eliminar categoría"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    );
-                  }) : (
-                    <div className="text-center py-4">
-                      <Settings className="mx-auto mb-2 text-gray-400" size={32} />
-                      <p className="text-gray-500 text-sm">No hay categorías en este departamento</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Modal de confirmación eliminación */}
-        {deleteConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-              <div className="flex items-center mb-4">
-                <AlertTriangle className="text-red-600 mr-3" size={24} />
-                <h3 className="text-lg font-semibold text-gray-800">Confirmar Eliminación</h3>
-              </div>
-              <p className="text-gray-600 mb-6">
-                ¿Está seguro de eliminar la categoría <strong>"{deleteConfirm.categoryName}"</strong> del departamento <strong>{deleteConfirm.department}</strong>?
-                <br /><br />
-                <span className="text-sm text-orange-600">Nota: Las tareas existentes con esta categoría no se eliminarán, pero no podrán crear nuevas tareas con esta categoría.</span>
-              </p>
-              <div className="flex space-x-3 justify-end">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md transition-colors duration-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeleteCategory}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors duration-200"
-                >
-                  Eliminar Categoría
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
- // Componente Seguimiento
+  // Componente Seguimiento
   const TrackingPanel = () => {
     const [filters, setFilters] = useState({
       empleado: '',
@@ -3017,8 +1828,7 @@ const AdminPanel = memo(({
     );
   };
 
-  };
-// Componente Alertas
+  // Componente Alertas
 const AlertasPanel = () => {
   const [alertas, setAlertas] = useState([]);
   const [filtros, setFiltros] = useState({
@@ -3484,9 +2294,236 @@ const AlertasPanel = () => {
   );
 };
 
+  const UserManagement = () => {
+    const [newUser, setNewUser] = useState({
+      name: '', username: '', password: '', email: '', 
+      department: '', horas_objetivo: 8, hora_inicio: '09:00'
+    });
+    const [showNewUserForm, setShowNewUserForm] = useState(false);
 
+    const handleAddUser = async () => {
+      if (!newUser.name || !newUser.username || !newUser.password || !newUser.email || !newUser.department) {
+        alert('Por favor, complete todos los campos obligatorios');
+        return;
+      }
+      
+      if (users.some(u => u.username === newUser.username)) {
+        alert('El nombre de usuario ya existe');
+        return;
+      }
 
-  // NAVEGACIÓN Y ESTRUCTURA PRINCIPAL DEL ADMINPANEL
+      const result = await createUser({
+        ...newUser,
+        horas_objetivo: parseFloat(newUser.horas_objetivo)
+      });
+
+      if (result.success) {
+        setNewUser({
+          name: '', username: '', password: '', email: '', 
+          department: '', horas_objetivo: 8, hora_inicio: '09:00'
+        });
+        setShowNewUserForm(false);
+      }
+    };
+
+    const handleDeleteUser = async (userId) => {
+      const user = users.find(u => u.id === userId);
+      if (user?.username === 'admin') {
+        alert('No se puede eliminar el usuario administrador');
+        return;
+      }
+      
+      if (window.confirm(`¿Está seguro de eliminar al usuario ${user?.name}?`)) {
+        await deleteUser(userId);
+      }
+    };
+
+    const nonAdminUsers = users.filter(u => u.role !== 'admin');
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">Gestión de Usuarios</h2>
+          <button
+            onClick={() => setShowNewUserForm(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center transition-colors duration-200"
+          >
+            <Plus className="mr-2" size={16} />
+            Nuevo Usuario
+          </button>
+        </div>
+
+        {showNewUserForm && (
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <h3 className="text-lg font-semibold mb-4">Crear Nuevo Usuario</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <OptimizedInput
+                value={newUser.name}
+                onChange={(value) => setNewUser(prev => ({ ...prev, name: value }))}
+                placeholder="Nombre completo"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+              <OptimizedInput
+                value={newUser.username}
+                onChange={(value) => setNewUser(prev => ({ ...prev, username: value }))}
+                placeholder="Usuario"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+              <OptimizedInput
+                type="password"
+                value={newUser.password}
+                onChange={(value) => setNewUser(prev => ({ ...prev, password: value }))}
+                placeholder="Contraseña"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+              <OptimizedInput
+                type="email"
+                value={newUser.email}
+                onChange={(value) => setNewUser(prev => ({ ...prev, email: value }))}
+                placeholder="Email"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+              <OptimizedSelect
+                value={newUser.department}
+                onChange={(value) => setNewUser(prev => ({ ...prev, department: value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="">Seleccionar departamento</option>
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </OptimizedSelect>
+              <OptimizedInput
+                type="number"
+                step="0.5"
+                value={newUser.horas_objetivo}
+                onChange={(value) => setNewUser(prev => ({ ...prev, horas_objetivo: value }))}
+                placeholder="Horas objetivo"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleAddUser}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+              >
+                Crear Usuario
+              </button>
+              <button
+                onClick={() => setShowNewUserForm(false)}
+                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {nonAdminUsers.map(user => (
+            <div key={user.id} className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="mb-4">
+                <h4 className="font-semibold text-lg">{user.name}</h4>
+                <p className="text-gray-600">@{user.username}</p>
+              </div>
+              <div className="space-y-2 text-sm mb-4">
+                <div><span className="text-gray-600">Email:</span> {user.email}</div>
+                <div><span className="text-gray-600">Departamento:</span> {user.department}</div>
+                <div><span className="text-gray-600">Horas objetivo:</span> {user.horas_objetivo}h</div>
+              </div>
+              <button
+                onClick={() => handleDeleteUser(user.id)}
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm"
+              >
+                Eliminar Usuario
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const CategoryManagement = () => {
+    const [newCategory, setNewCategory] = useState({ department: '', name: '' });
+
+    const handleAddCategory = async () => {
+      if (!newCategory.department || !newCategory.name.trim()) {
+        alert('Por favor, complete todos los campos');
+        return;
+      }
+
+      const result = await createCategory(newCategory.department, newCategory.name.trim());
+      if (result.success) {
+        setNewCategory({ department: '', name: '' });
+      }
+    };
+
+    const handleDeleteCategory = async (department, categoryName) => {
+      if (window.confirm(`¿Eliminar la categoría "${categoryName}"?`)) {
+        await deleteCategoryFromDB(department, categoryName);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Gestión de Categorías</h2>
+
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Agregar Nueva Categoría</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <OptimizedSelect
+              value={newCategory.department}
+              onChange={(value) => setNewCategory(prev => ({ ...prev, department: value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            >
+              <option value="">Seleccionar departamento</option>
+              {departments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </OptimizedSelect>
+            <OptimizedInput
+              value={newCategory.name}
+              onChange={(value) => setNewCategory(prev => ({ ...prev, name: value }))}
+              placeholder="Nombre de la categoría"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+          <button
+            onClick={handleAddCategory}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+          >
+            Agregar Categoría
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {departments.map(dept => (
+            <div key={dept} className="bg-white rounded-lg shadow-sm border p-6">
+              <h4 className="font-semibold text-lg mb-4">{dept}</h4>
+              <div className="space-y-2">
+                {(categories[dept] || []).map(category => (
+                  <div key={category} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <span>{category}</span>
+                    <button
+                      onClick={() => handleDeleteCategory(dept, category)}
+                      className="text-red-600 hover:bg-red-100 p-1 rounded"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                {(!categories[dept] || categories[dept].length === 0) && (
+                  <p className="text-gray-500 text-sm">No hay categorías</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex">
       {/* Sidebar Admin */}
@@ -3502,17 +2539,6 @@ const AlertasPanel = () => {
               >
                 <Users className="mr-3" size={20} />
                 Gestión de Usuarios
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => setActiveTab('assigned-tasks')}
-                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
-                  activeTab === 'assigned-tasks' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Send className="mr-3" size={20} />
-                Tareas Asignadas
               </button>
             </li>
             <li>
@@ -3557,11 +2583,6 @@ const AlertasPanel = () => {
               >
                 <AlertTriangle className="mr-3" size={20} />
                 Alertas
-                {estadisticas && estadisticas.total > 0 && (
-                  <span className="ml-2 bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full">
-                    {estadisticas.total}
-                  </span>
-                )}
               </button>
             </li>
           </ul>
@@ -3571,7 +2592,6 @@ const AlertasPanel = () => {
       {/* Contenido Admin */}
       <div className="flex-1">
         {activeTab === 'users' && <UserManagement />}
-        {activeTab === 'assigned-tasks' && <AssignedTasksManagement />}
         {activeTab === 'categories' && <CategoryManagement />}
         {activeTab === 'tracking' && <TrackingPanel />}
         {activeTab === 'analytics' && <AnalyticsPanel />}
@@ -3580,32 +2600,30 @@ const AlertasPanel = () => {
     </div>
   );
 });
+ 
+
 // Componente principal
 const App = () => {
-  const {
-    users,
-    tasks,
-    categories,
-    diasJustificados,
-    alertasArchivadas,
-    assignedTasks,
-    loading,
-    error,
-    createUser,
-    updateUser,
-    deleteUser,
-    createTask,
-    updateTask,
-    deleteTask,
-    createAssignedTask,
-    updateAssignedTask,
-    deleteAssignedTask,
-    createCategory,
-    deleteCategoryFromDB,
-    createJustifiedDay,
-    archivarAlerta,
-    restaurarAlerta,
-    loadAllData
+const {
+  users,
+  tasks,
+  categories,
+  diasJustificados,
+  alertasArchivadas, // AGREGAR ESTO
+  loading,
+  error,
+  createUser,
+  updateUser,
+  deleteUser,
+  createTask,
+  updateTask,
+  deleteTask,
+  createCategory,
+  deleteCategoryFromDB,
+  createJustifiedDay,
+  archivarAlerta, // AGREGAR ESTO
+  restaurarAlerta, // AGREGAR ESTO
+  loadAllData
   } = useSupabaseData();
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -3653,16 +2671,11 @@ const App = () => {
               </div>
               <h1 className="text-xl font-bold text-gray-800">TimeTracker Pro</h1>
               <span className="ml-4 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                Online
+                🌐 Online
               </span>
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-gray-600">Hola, {currentUser.name}</span>
-              {isAdmin && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
-                  Administrador
-                </span>
-              )}
               <button
                 onClick={handleLogout}
                 className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors duration-200"
@@ -3681,18 +2694,14 @@ const App = () => {
             tasks={tasks}
             categories={categories}
             diasJustificados={diasJustificados}
-            alertasArchivadas={alertasArchivadas}
-            assignedTasks={assignedTasks}
+            alertasArchivadas={alertasArchivadas} // NUEVO
             createUser={createUser}
             updateUser={updateUser}
             deleteUser={deleteUser}
             createCategory={createCategory}
             deleteCategoryFromDB={deleteCategoryFromDB}
-            archivarAlerta={archivarAlerta}
-            restaurarAlerta={restaurarAlerta}
-            createAssignedTask={createAssignedTask}
-            updateAssignedTask={updateAssignedTask}
-            deleteAssignedTask={deleteAssignedTask}
+            archivarAlerta={archivarAlerta} // NUEVO
+            restaurarAlerta={restaurarAlerta} // NUEVO
           />
         ) : (
           <EmployeePanel 
@@ -3700,13 +2709,11 @@ const App = () => {
             categories={categories} 
             tasks={tasks} 
             diasJustificados={diasJustificados}
-            assignedTasks={assignedTasks}
             createTask={createTask}
             updateTask={updateTask}
             deleteTask={deleteTask}
             createCategory={createCategory}
             createJustifiedDay={createJustifiedDay}
-            updateAssignedTask={updateAssignedTask}
           />
         )}
       </div>
@@ -3714,4 +2721,4 @@ const App = () => {
   );
 };
 
-export default App;       
+export default App;
