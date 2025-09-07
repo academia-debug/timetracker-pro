@@ -1,3 +1,5 @@
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle } from 'lucide-react';
 
 // Configuración de Supabase
 const SUPABASE_URL = 'https://enpgabqnvggkzlqjhkfc.supabase.co';
