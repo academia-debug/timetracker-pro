@@ -1,6 +1,8 @@
 {
   "name": "timetracker-pro",
   "version": "1.0.0",
+  "description": "Sistema de gestión de tiempo laboral",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
