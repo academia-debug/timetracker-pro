@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle, FileText, Send, Save, X, Filter, Search } from 'lucide-react';
 
 // CONFIGURACIÓN DE SUPABASE - CAMBIAR POR TUS CREDENCIALES
-const SUPABASE_URL = 'https://tu-proyecto.supabase.co'; // ← CAMBIAR AQUÍ
-const SUPABASE_ANON_KEY = 'tu-clave-anonima-aqui'; // ← CAMBIAR AQUÍ
+const SUPABASE_URL = 'https://enpgabqnvggkzlqjhkfc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pdnB5eWlua2NkdHVxc3RxbXNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgyODM1MTksImV4cCI6MjA3Mzg1OTUxOX0.UiPjNnSdTd-UaYrj2f8iFexkDKSj7KY5Oy94G_qH5M8';
 
 // Cliente simple de Supabase
 class SupabaseClient {
