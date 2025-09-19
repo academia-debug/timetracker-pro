@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle, FileText, Send } from 'lucide-react';
+import { Users, Clock, BarChart3, Settings, Plus, Edit2, Trash2, Play, Pause, CheckCircle, AlertTriangle, TrendingUp, Eye, EyeOff, User, Building, Calendar, Target, Activity, AlertCircle, FileText, Send, Save, X, Filter, Search } from 'lucide-react';
 
 // CONFIGURACIÓN DE SUPABASE - CAMBIAR POR TUS CREDENCIALES
-const SUPABASE_URL = 'https://oivpyyinkcdtuqstqmsn.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pdnB5eWlua2NkdHVxc3RxbXNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgyODM1MTksImV4cCI6MjA3Mzg1OTUxOX0.UiPjNnSdTd-UaYrj2f8iFexkDKSj7KY5Oy94G_qH5M8';
+const SUPABASE_URL = 'https://tu-proyecto.supabase.co'; // ← CAMBIAR AQUÍ
+const SUPABASE_ANON_KEY = 'tu-clave-anonima-aqui'; // ← CAMBIAR AQUÍ
 
 // Cliente simple de Supabase
 class SupabaseClient {
@@ -1316,720 +1316,135 @@ const EmployeePanel = memo(({
   );
 });
 
-// Panel de administrador simplificado
-const AdminPanel = memo(({ 
-  users,           
-  tasks,           
-  categories,      
+// Componente para gestión de alertas de usuarios
+const AlertManagement = memo(({ 
+  users, 
+  tasks, 
   diasJustificados, 
   alertasArchivadas,
-  assignedTasks,
-  createUser,
-  updateUser,
-  deleteUser,
-  createCategory,
-  deleteCategoryFromDB,
   archivarAlerta,
-  restaurarAlerta,
-  createAssignedTask,
-  updateAssignedTask
+  restaurarAlerta
 }) => {
-  const [activeTab, setActiveTab] = useState('users');
-  const [newUser, setNewUser] = useState({
-    name: '', username: '', password: '', email: '', 
-    department: '', horas_objetivo: 8, hora_inicio: '09:00'
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [dateRange, setDateRange] = useState({
+    start: '',
+    end: ''
   });
-  const [showNewUserForm, setShowNewUserForm] = useState(false);
-  const [newAssignedTask, setNewAssignedTask] = useState({
-    assigned_to: '',
-    title: '',
-    description: '',
-    category: '',
-    due_date: '',
-    priority: 'normal'
-  });
-  const [showNewTaskForm, setShowNewTaskForm] = useState(false);
 
-  const departments = ['Marketing', 'Ventas', 'Atención al Cliente', 'Administración', 'Edición', 'Equipo Docente'];
-
-  const handleAddUser = async () => {
-    if (!newUser.name || !newUser.username || !newUser.password || !newUser.email || !newUser.department) {
-      alert('Por favor, complete todos los campos obligatorios');
-      return;
-    }
-    
-    if (users.some(u => u.username === newUser.username)) {
-      alert('El nombre de usuario ya existe');
-      return;
-    }
-
-    const result = await createUser({
-      ...newUser,
-      horas_objetivo: parseFloat(newUser.horas_objetivo)
-    });
-
-    if (result.success) {
-      setNewUser({
-        name: '', username: '', password: '', email: '', 
-        department: '', horas_objetivo: 8, hora_inicio: '09:00'
-      });
-      setShowNewUserForm(false);
-    }
-  };
-
-  const handleDeleteUser = async (userId) => {
-    const user = users.find(u => u.id === userId);
-    if (user?.username === 'admin') {
-      alert('No se puede eliminar el usuario administrador');
-      return;
-    }
-    
-    if (window.confirm(`¿Está seguro de eliminar al usuario ${user?.name}?`)) {
-      await deleteUser(userId);
-    }
-  };
-
-  const handleAddAssignedTask = async () => {
-    if (!newAssignedTask.assigned_to || !newAssignedTask.title) {
-      alert('Por favor, complete los campos obligatorios');
-      return;
-    }
-
-    const adminUser = users.find(u => u.role === 'admin');
-    const result = await createAssignedTask({
-      ...newAssignedTask,
-      assigned_by: adminUser.id,
-      assigned_to: parseInt(newAssignedTask.assigned_to)
-    });
-
-    if (result.success) {
-      setNewAssignedTask({
-        assigned_to: '',
-        title: '',
-        description: '',
-        category: '',
-        due_date: '',
-        priority: 'normal'
-      });
-      setShowNewTaskForm(false);
-    }
-  };
-
-  const nonAdminUsers = users.filter(u => u.role !== 'admin');
-
-  return (
-    <div className="flex">
-      {/* Sidebar Admin */}
-      <div className="w-64 bg-white rounded-lg shadow-sm border h-fit mr-8">
-        <nav className="p-4">
-          <ul className="space-y-2">
-            <li>
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
-                  activeTab === 'users' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Users className="mr-3" size={20} />
-                Gestión de Usuarios
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => setActiveTab('assignTasks')}
-                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
-                  activeTab === 'assignTasks' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Send className="mr-3" size={20} />
-                Asignar Tareas
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => setActiveTab('categories')}
-                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
-                  activeTab === 'categories' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Settings className="mr-3" size={20} />
-                Categorías
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => setActiveTab('analytics')}
-                className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-200 flex items-center ${
-                  activeTab === 'analytics' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <BarChart3 className="mr-3" size={20} />
-                Analytics
-              </button>
-            </li>
-          </ul>
-        </nav>
-      </div>
-
-      {/* Contenido Admin */}
-      <div className="flex-1">
-        {/* Gestión de Usuarios */}
-        {activeTab === 'users' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Gestión de Usuarios</h2>
-              <button
-                onClick={() => setShowNewUserForm(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center transition-colors duration-200"
-              >
-                <Plus className="mr-2" size={16} />
-                Nuevo Usuario
-              </button>
-            </div>
-
-            {showNewUserForm && (
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <h3 className="text-lg font-semibold mb-4">Crear Nuevo Usuario</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <OptimizedInput
-                    value={newUser.name}
-                    onChange={(value) => setNewUser(prev => ({ ...prev, name: value }))}
-                    placeholder="Nombre completo"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <OptimizedInput
-                    value={newUser.username}
-                    onChange={(value) => setNewUser(prev => ({ ...prev, username: value }))}
-                    placeholder="Usuario"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <OptimizedInput
-                    type="password"
-                    value={newUser.password}
-                    onChange={(value) => setNewUser(prev => ({ ...prev, password: value }))}
-                    placeholder="Contraseña"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <OptimizedInput
-                    type="email"
-                    value={newUser.email}
-                    onChange={(value) => setNewUser(prev => ({ ...prev, email: value }))}
-                    placeholder="Email"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <OptimizedSelect
-                    value={newUser.department}
-                    onChange={(value) => setNewUser(prev => ({ ...prev, department: value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="">Seleccionar departamento</option>
-                    {departments.map(dept => (
-                      <option key={dept} value={dept}>{dept}</option>
-                    ))}
-                  </OptimizedSelect>
-                  <OptimizedInput
-                    type="number"
-                    step="0.5"
-                    value={newUser.horas_objetivo}
-                    onChange={(value) => setNewUser(prev => ({ ...prev, horas_objetivo: value }))}
-                    placeholder="Horas objetivo"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={handleAddUser}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-                  >
-                    Crear Usuario
-                  </button>
-                  <button
-                    onClick={() => setShowNewUserForm(false)}
-                    className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {nonAdminUsers.map(user => (
-                <div key={user.id} className="bg-white rounded-lg shadow-sm border p-6">
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-lg">{user.name}</h4>
-                    <p className="text-gray-600">@{user.username}</p>
-                  </div>
-                  <div className="space-y-2 text-sm mb-4">
-                    <div><span className="text-gray-600">Email:</span> {user.email}</div>
-                    <div><span className="text-gray-600">Departamento:</span> {user.department}</div>
-                    <div><span className="text-gray-600">Horas objetivo:</span> {user.horas_objetivo}h</div>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteUser(user.id)}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm"
-                  >
-                    Eliminar Usuario
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Asignar Tareas */}
-        {activeTab === 'assignTasks' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Asignar Tareas</h2>
-              <button
-                onClick={() => setShowNewTaskForm(true)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md flex items-center transition-colors duration-200"
-              >
-                <Send className="mr-2" size={16} />
-                Nueva Tarea
-              </button>
-            </div>
-
-            {showNewTaskForm && (
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <h3 className="text-lg font-semibold mb-4">Asignar Nueva Tarea</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Empleado *</label>
-                    <OptimizedSelect
-                      value={newAssignedTask.assigned_to}
-                      onChange={(value) => setNewAssignedTask(prev => ({ ...prev, assigned_to: value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="">Seleccionar empleado</option>
-                      {nonAdminUsers.map(user => (
-                        <option key={user.id} value={user.id}>{user.name} - {user.department}</option>
-                      ))}
-                    </OptimizedSelect>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
-                    <OptimizedSelect
-                      value={newAssignedTask.priority}
-                      onChange={(value) => setNewAssignedTask(prev => ({ ...prev, priority: value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="baja">Baja</option>
-                      <option value="normal">Normal</option>
-                      <option value="alta">Alta</option>
-                      <option value="urgente">Urgente</option>
-                    </OptimizedSelect>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
-                    <OptimizedInput
-                      value={newAssignedTask.title}
-                      onChange={(value) => setNewAssignedTask(prev => ({ ...prev, title: value }))}
-                      placeholder="Título de la tarea"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                    <textarea
-                      value={newAssignedTask.description}
-                      onChange={(e) => setNewAssignedTask(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Descripción detallada de la tarea"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md h-20 resize-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                    <OptimizedInput
-                      value={newAssignedTask.category}
-                      onChange={(value) => setNewAssignedTask(prev => ({ ...prev, category: value }))}
-                      placeholder="Categoría de la tarea"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha límite</label>
-                    <OptimizedInput
-                      type="date"
-                      value={newAssignedTask.due_date}
-                      onChange={(value) => setNewAssignedTask(prev => ({ ...prev, due_date: value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min={new Date().toISOString().split('T')[0]}
-                    />
-                  </div>
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={handleAddAssignedTask}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
-                  >
-                    Asignar Tarea
-                  </button>
-                  <button
-                    onClick={() => setShowNewTaskForm(false)}
-                    className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Lista de tareas asignadas */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold mb-4">Tareas Asignadas</h3>
-              {assignedTasks.length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText className="mx-auto mb-4 text-gray-400" size={48} />
-                  <p className="text-gray-600">No hay tareas asignadas</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {assignedTasks.map(task => {
-                    const assignedUser = users.find(u => u.id === task.assigned_to);
-                    const isCompleted = task.status === 'completed';
-                    
-                    return (
-                      <div key={task.id} className={`p-4 border rounded-lg ${isCompleted ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <h4 className={`font-medium ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>
-                                {task.title}
-                              </h4>
-                              <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                                task.priority === 'urgente' ? 'bg-red-100 text-red-800' :
-                                task.priority === 'alta' ? 'bg-orange-100 text-orange-800' :
-                                task.priority === 'normal' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {task.priority}
-                              </span>
-                              <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                                isCompleted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                {isCompleted ? 'Completada' : 'Pendiente'}
-                              </span>
-                            </div>
-                            {task.description && (
-                              <p className="text-sm text-gray-600 mb-2">{task.description}</p>
-                            )}
-                            <div className="flex items-center space-x-4 text-sm text-gray-500">
-                              <span>👤 {assignedUser?.name || 'Usuario no encontrado'}</span>
-                              {task.category && <span>📂 {task.category}</span>}
-                              {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString('es-ES')}</span>}
-                              {isCompleted && task.completed_at && (
-                                <span>✅ {new Date(task.completed_at).toLocaleDateString('es-ES')}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Gestión de Categorías */}
-        {activeTab === 'categories' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold">Gestión de Categorías</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {departments.map(dept => (
-                <div key={dept} className="bg-white rounded-lg shadow-sm border p-6">
-                  <h4 className="font-semibold text-lg mb-4">{dept}</h4>
-                  <div className="space-y-2">
-                    {(categories[dept] || []).map(category => (
-                      <div key={category} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                        <span>{category}</span>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`¿Eliminar la categoría "${category}"?`)) {
-                              deleteCategoryFromDB(dept, category);
-                            }
-                          }}
-                          className="text-red-600 hover:bg-red-100 p-1 rounded"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    {(!categories[dept] || categories[dept].length === 0) && (
-                      <p className="text-gray-500 text-sm">No hay categorías</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Analytics */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold">Analytics</h2>
-            
-            {/* Métricas clave */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Usuarios</p>
-                    <p className="text-2xl font-bold text-blue-600">{nonAdminUsers.length}</p>
-                  </div>
-                  <div className="p-3 bg-blue-100 rounded-full">
-                    <Users className="text-blue-600" size={24} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Tareas</p>
-                    <p className="text-2xl font-bold text-green-600">{tasks.length}</p>
-                  </div>
-                  <div className="p-3 bg-green-100 rounded-full">
-                    <Clock className="text-green-600" size={24} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Tareas Asignadas</p>
-                    <p className="text-2xl font-bold text-purple-600">{assignedTasks.length}</p>
-                  </div>
-                  <div className="p-3 bg-purple-100 rounded-full">
-                    <FileText className="text-purple-600" size={24} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Horas Totales</p>
-                    <p className="text-2xl font-bold text-orange-600">
-                      {tasks.reduce((sum, task) => sum + task.hours, 0).toFixed(1)}h
-                    </p>
-                  </div>
-                  <div className="p-3 bg-orange-100 rounded-full">
-                    <BarChart3 className="text-orange-600" size={24} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Gráfico de horas por empleado */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold mb-4">Horas por Empleado</h3>
-              <div className="space-y-4">
-                {nonAdminUsers.map((user, index) => {
-                  const userTasks = tasks.filter(task => task.user_id === user.id);
-                  const totalHours = userTasks.reduce((sum, task) => sum + task.hours, 0);
-                  const maxHours = Math.max(...nonAdminUsers.map(u => 
-                    tasks.filter(t => t.user_id === u.id).reduce((sum, task) => sum + task.hours, 0)
-                  ), 1);
-                  const percentage = (totalHours / maxHours) * 100;
-                  
-                  const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500'];
-                  
-                  return (
-                    <div key={user.id}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-medium">{user.name}</span>
-                        <span>{totalHours.toFixed(1)}h</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div 
-                          className={`h-3 rounded-full transition-all duration-500 ${colors[index % colors.length]}`}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Tareas por departamento */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold mb-4">Actividad por Departamento</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {departments.map(dept => {
-                  const deptUsers = nonAdminUsers.filter(u => u.department === dept);
-                  const deptTasks = tasks.filter(task => {
-                    const taskUser = users.find(u => u.id === task.user_id);
-                    return taskUser && taskUser.department === dept;
-                  });
-                  const totalHours = deptTasks.reduce((sum, task) => sum + task.hours, 0);
-                  
-                  return (
-                    <div key={dept} className="p-4 border border-gray-200 rounded-lg">
-                      <h4 className="font-medium text-gray-800 mb-2">{dept}</h4>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Empleados:</span>
-                          <span className="font-medium">{deptUsers.length}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Tareas:</span>
-                          <span className="font-medium">{deptTasks.length}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Horas:</span>
-                          <span className="font-medium">{totalHours.toFixed(1)}h</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+  const departments = useMemo(() => 
+    [...new Set(users.filter(u => u.role !== 'admin').map(u => u.department))],
+    [users]
   );
-});
 
-// Componente principal
-const App = () => {
-  const {
-    users,
-    tasks,
-    categories,
-    diasJustificados,
-    alertasArchivadas,
-    assignedTasks,
-    loading,
-    error,
-    createUser,
-    updateUser,
-    deleteUser,
-    createTask,
-    updateTask,
-    deleteTask,
-    createCategory,
-    deleteCategoryFromDB,
-    createJustifiedDay,
-    archivarAlerta,
-    restaurarAlerta,
-    createAssignedTask,
-    updateAssignedTask,
-    completeAssignedTask,
-    loadAllData
-  } = useSupabaseData();
+  const generateActiveAlerts = useMemo(() => {
+    const alerts = [];
+    
+    users.filter(u => u.role !== 'admin').forEach(user => {
+      for (let i = 1; i < 30; i++) {
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() - i);
+        const fechaStr = fecha.toISOString().split('T')[0];
 
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loginError, setLoginError] = useState('');
+        const diaSemana = fecha.getDay();
+        if (diaSemana === 0 || diaSemana === 6) continue;
 
-  const handleLogin = useCallback((username, password) => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) {
-      setCurrentUser(user);
-      setLoginError('');
-      return true;
-    } else {
-      setLoginError('Usuario o contraseña incorrectos');
-      return false;
-    }
-  }, [users]);
+        const tareasDelDia = tasks.filter(task => 
+          task.user_id === user.id && task.date === fechaStr
+        );
+        
+        const horasRegistradas = tareasDelDia.reduce((sum, task) => sum + task.hours, 0);
+        const horasObjetivo = user.horas_objetivo || 8;
+        const horasFaltantes = horasObjetivo - horasRegistradas;
 
-  const handleLogout = useCallback(() => {
-    setCurrentUser(null);
-  }, []);
+        if (horasFaltantes > 0) {
+          const isJustified = diasJustificados.some(justif => 
+            justif.empleado_id === user.id && justif.fecha === fechaStr
+          );
+          
+          const isArchived = alertasArchivadas.some(archived => 
+            archived.empleado_id === user.id && archived.fecha === fechaStr
+          );
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+          if (!isJustified && !isArchived) {
+            alerts.push({
+              id: `${user.id}-${fechaStr}`,
+              empleadoId: user.id,
+              empleado: user.name,
+              fecha: fechaStr,
+              horasObjetivo: horasObjetivo,
+              horasRegistradas: horasRegistradas,
+              horasFaltantes: horasFaltantes,
+              departamento: user.department,
+              tipo: horasRegistradas === 0 ? 'sin-registro' : 'incompleto'
+            });
+          }
+        }
+      }
+    });
 
-  if (error) {
-    return <ErrorDisplay error={error} onRetry={loadAllData} />;
-  }
+    return alerts.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  }, [users, tasks, diasJustificados, alertasArchivadas]);
 
-  if (!currentUser) {
-    return <Login onLogin={handleLogin} loginError={loginError} users={users} />;
-  }
+  const filteredActiveAlerts = useMemo(() => {
+    return generateActiveAlerts.filter(alert => {
+      const matchesSearch = searchTerm === '' || 
+        alert.empleado.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesDepartment = selectedDepartment === '' || 
+        alert.departamento === selectedDepartment;
+      
+      const matchesDateRange = (!dateRange.start || alert.fecha >= dateRange.start) &&
+        (!dateRange.end || alert.fecha <= dateRange.end);
+      
+      return matchesSearch && matchesDepartment && matchesDateRange;
+    });
+  }, [generateActiveAlerts, searchTerm, selectedDepartment, dateRange]);
 
-  const isAdmin = currentUser.role === 'admin';
+  const filteredArchivedAlerts = useMemo(() => {
+    return alertasArchivadas.filter(alert => {
+      const matchesSearch = searchTerm === '' || 
+        alert.empleado_name.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesDepartment = selectedDepartment === '' || 
+        alert.departamento === selectedDepartment;
+      
+      const matchesDateRange = (!dateRange.start || alert.fecha >= dateRange.start) &&
+        (!dateRange.end || alert.fecha <= dateRange.end);
+      
+      return matchesSearch && matchesDepartment && matchesDateRange;
+    });
+  }, [alertasArchivadas, searchTerm, selectedDepartment, dateRange]);
+
+  const formatearFecha = (fecha) => {
+    const date = new Date(fecha + 'T00:00:00');
+    return date.toLocaleDateString('es-ES', { 
+      weekday: 'short', 
+      day: 'numeric', 
+      month: 'short',
+      year: 'numeric'
+    });
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <div className="bg-blue-600 w-8 h-8 rounded-full flex items-center justify-center mr-3">
-                <Clock className="text-white text-lg" />
-              </div>
-              <h1 className="text-xl font-bold text-gray-800">TimeTracker Pro</h1>
-              <span className="ml-4 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                🌐 Online
-              </span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-gray-600">Hola, {currentUser.name}</span>
-              {isAdmin && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-medium">
-                  Admin
-                </span>
-              )}
-              <button
-                onClick={handleLogout}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors duration-200"
-              >
-                Cerrar Sesión
-              </button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Gestión de Alertas</h2>
+        <div className="text-sm text-gray-600">
+          {filteredActiveAlerts.length} alertas activas | {filteredArchivedAlerts.length} archivadas
         </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {isAdmin ? (
-          <AdminPanel 
-            users={users}
-            tasks={tasks}
-            categories={categories}
-            diasJustificados={diasJustificados}
-            alertasArchivadas={alertasArchivadas}
-            assignedTasks={assignedTasks}
-            createUser={createUser}
-            updateUser={updateUser}
-            deleteUser={deleteUser}
-            createCategory={createCategory}
-            deleteCategoryFromDB={deleteCategoryFromDB}
-            archivarAlerta={archivarAlerta}
-            restaurarAlerta={restaurarAlerta}
-            createAssignedTask={createAssignedTask}
-            updateAssignedTask={updateAssignedTask}
-          />
-        ) : (
-          <EmployeePanel 
-            user={currentUser} 
-            categories={categories} 
-            tasks={tasks} 
-            diasJustificados={diasJustificados}
-            assignedTasks={assignedTasks}
-            createTask={createTask}
-            updateTask={updateTask}
-            deleteTask={deleteTask}
-            createCategory={createCategory}
-            createJustifiedDay={createJustifiedDay}
-            completeAssignedTask={completeAssignedTask}
-          />
-        )}
       </div>
-    </div>
-  );
-};
 
-export default App;
+      {/* Filtros */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <Filter className="mr-2" size={20} />
+          Filtros
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Buscar empleado</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+              <OptimizedInput
+                value={searchTerm
