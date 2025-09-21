@@ -2255,36 +2255,41 @@ const EmployeePanel = memo(({ user, onLogout }) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             {/* Navegador de fechas */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={goToPreviousDay}
-                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                >
-                  <span>←</span> Día anterior
-                </button>
-                
-                <div className="text-center">
-                  <div className="font-semibold text-lg">{formatDisplayDate(selectedDate)}</div>
-                  <div className="text-sm text-gray-500">{selectedDate}</div>
-                </div>
-                
-                <div className="flex gap-2">
-                  <button
-                    onClick={goToToday}
-                    className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
-                  >
-                    Hoy
-                  </button>
-                  <button
-                    onClick={goToNextDay}
-                    className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                  >
-                    Día siguiente <span>→</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+<div className="bg-white p-4 rounded-lg shadow">
+  <div className="flex items-center justify-between">
+    <button
+      onClick={goToPreviousDay}
+      className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+    >
+      <span>←</span> Día anterior
+    </button>
+    
+    <div className="text-center flex flex-col items-center gap-2">
+      <div className="font-semibold text-lg">{formatDisplayDate(selectedDate)}</div>
+      <OptimizedInput
+        type="date"
+        value={selectedDate}
+        onChange={(value) => setSelectedDate(value)}
+        className="text-center text-sm w-40"
+      />
+    </div>
+    
+    <div className="flex gap-2">
+      <button
+        onClick={goToToday}
+        className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
+      >
+        Hoy
+      </button>
+      <button
+        onClick={goToNextDay}
+        className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+      >
+        Día siguiente <span>→</span>
+      </button>
+    </div>
+  </div>
+</div>
 
             {/* Información Personal */}
             <div className="bg-white p-6 rounded-lg shadow">
