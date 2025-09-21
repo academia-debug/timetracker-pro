@@ -2050,7 +2050,6 @@ const EmployeePanel = memo(({ user, onLogout }) => {
     markDayAsHoliday
   } = useSupabaseData();
 
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [newTask, setNewTask] = useState({
     description: '',
     category: '',
@@ -2075,57 +2074,22 @@ const EmployeePanel = memo(({ user, onLogout }) => {
     tasks.filter(task => task.user_id === user.id), [tasks, user.id]
   );
 
-  const selectedDateTasks = useMemo(() => {
-    return userTasks.filter(task => task.date === selectedDate);
-  }, [userTasks, selectedDate]);
+  const todayTasks = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return userTasks.filter(task => task.date === today);
+  }, [userTasks]);
 
-  const selectedDateHours = useMemo(() => 
-    selectedDateTasks.reduce((sum, task) => sum + parseFloat(task.hours), 0), [selectedDateTasks]
+  const todayHours = useMemo(() => 
+    todayTasks.reduce((sum, task) => sum + parseFloat(task.hours), 0), [todayTasks]
   );
 
   const progressPercentage = useMemo(() => 
-    Math.min((selectedDateHours / user.horas_objetivo) * 100, 100), [selectedDateHours, user.horas_objetivo]
+    Math.min((todayHours / user.horas_objetivo) * 100, 100), [todayHours, user.horas_objetivo]
   );
 
   const userCategories = useMemo(() => 
     categories.filter(cat => cat.department === user.department), [categories, user.department]
   );
-
-  // Sincronizar la fecha del formulario con la fecha seleccionada
-  useEffect(() => {
-    setNewTask(prev => ({ ...prev, date: selectedDate }));
-  }, [selectedDate]);
-
-  const goToPreviousDay = useCallback(() => {
-    const currentDate = new Date(selectedDate);
-    currentDate.setDate(currentDate.getDate() - 1);
-    const newDate = currentDate.toISOString().split('T')[0];
-    setSelectedDate(newDate);
-  }, [selectedDate]);
-
-  const goToNextDay = useCallback(() => {
-    const currentDate = new Date(selectedDate);
-    currentDate.setDate(currentDate.getDate() + 1);
-    const newDate = currentDate.toISOString().split('T')[0];
-    setSelectedDate(newDate);
-  }, [selectedDate]);
-
-  const goToToday = useCallback(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setSelectedDate(today);
-  }, []);
-
-  const formatDisplayDate = useCallback((dateStr) => {
-    const date = new Date(dateStr);
-    const today = new Date().toISOString().split('T')[0];
-    if (dateStr === today) return 'Hoy';
-    
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (dateStr === yesterday.toISOString().split('T')[0]) return 'Ayer';
-    
-    return date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  }, []);
 
   const handleSubmitTask = useCallback(async () => {
     if (!newTask.description || !newTask.category || !newTask.hours) {
@@ -2153,7 +2117,7 @@ const EmployeePanel = memo(({ user, onLogout }) => {
         description: '',
         category: '',
         hours: '',
-        date: selectedDate
+        date: new Date().toISOString().split('T')[0]
       });
       setMessage('Tarea creada exitosamente');
     } else {
@@ -2161,7 +2125,7 @@ const EmployeePanel = memo(({ user, onLogout }) => {
     }
 
     setTimeout(() => setMessage(''), 3000);
-  }, [newTask, user, createTask, selectedDate]);
+  }, [newTask, user, createTask]);
 
   const handleEditTask = useCallback((task) => {
     setSelectedTask(task);
@@ -2252,46 +2216,9 @@ const EmployeePanel = memo(({ user, onLogout }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 gap-8">
-          <div className="space-y-6">
-            {/* Navegador de fechas */}
-<div className="bg-white p-4 rounded-lg shadow">
-  <div className="flex items-center justify-between">
-    <button
-      onClick={goToPreviousDay}
-      className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-    >
-      <span>←</span> Día anterior
-    </button>
-    
-    <div className="text-center flex flex-col items-center gap-2">
-      <div className="font-semibold text-lg">{formatDisplayDate(selectedDate)}</div>
-      <OptimizedInput
-        type="date"
-        value={selectedDate}
-        onChange={(value) => setSelectedDate(value)}
-        className="text-center text-sm w-40"
-      />
-    </div>
-    
-    <div className="flex gap-2">
-      <button
-        onClick={goToToday}
-        className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
-      >
-        Hoy
-      </button>
-      <button
-        onClick={goToNextDay}
-        className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-      >
-        Día siguiente <span>→</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-            {/* Información Personal */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            {/* 1. Información Personal (primera) */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <User size={20} />
@@ -2305,14 +2232,14 @@ const EmployeePanel = memo(({ user, onLogout }) => {
               </div>
             </div>
 
-            {/* Tareas Asignadas */}
+            {/* 2. Tareas Asignadas (segunda - movida aquí) */}
             <AssignedTasks
               userId={user.id}
               assignedTasks={assignedTasks}
               onUpdateStatus={handleAssignedTaskUpdate}
             />
 
-            {/* Mis Incidencias */}
+            {/* 3. Mis Incidencias (tercera - nueva sección) */}
             <MisIncidencias
               user={user}
               alertasArchivadas={alertasArchivadas}
@@ -2320,11 +2247,11 @@ const EmployeePanel = memo(({ user, onLogout }) => {
               onMarkAsHoliday={markDayAsHoliday}
             />
 
-            {/* Nueva Tarea */}
+            {/* 4. Nueva Tarea (cuarta) */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <Plus size={20} />
-                Nueva Tarea para {formatDisplayDate(selectedDate)}
+                Nueva Tarea
               </h2>
               
               {message && (
@@ -2393,11 +2320,11 @@ const EmployeePanel = memo(({ user, onLogout }) => {
               </div>
             </div>
 
-            {/* Tareas del día seleccionado */}
+            {/* 5. Tareas de Hoy (quinta) */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <FileText size={20} />
-                Tareas del {formatDisplayDate(selectedDate)}
+                Tareas de Hoy
                 {activeTimerId && (
                   <span className="text-sm font-normal text-green-600">
                     (Temporizador activo)
@@ -2405,7 +2332,7 @@ const EmployeePanel = memo(({ user, onLogout }) => {
                 )}
               </h2>
 
-              {selectedDateTasks.length > 0 ? (
+              {todayTasks.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -2419,7 +2346,7 @@ const EmployeePanel = memo(({ user, onLogout }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedDateTasks.map((task) => (
+                      {todayTasks.map((task) => (
                         <tr key={task.id} className="border-b hover:bg-gray-50">
                           <td className="py-2">{task.description}</td>
                           <td className="py-2">
@@ -2463,17 +2390,17 @@ const EmployeePanel = memo(({ user, onLogout }) => {
                 </div>
               ) : (
                 <p className="text-gray-500 text-center py-4">
-                  No hay tareas registradas para este día
+                  No hay tareas registradas para hoy
                 </p>
               )}
             </div>
           </div>
 
-   <div className="space-y-6">
+          <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <Target size={20} />
-                Resumen del {formatDisplayDate(selectedDate)}
+                Resumen del Día
               </h2>
               
               <div className="space-y-4">
@@ -2492,36 +2419,12 @@ const EmployeePanel = memo(({ user, onLogout }) => {
                       style={{ width: `${progressPercentage}%` }}
                     ></div>
                   </div>
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>{selectedDateHours.toFixed(1)}h registradas</span>
-                    <span>{user.horas_objetivo}h objetivo</span>
-                  </div>
                 </div>
               </div>
             </div>
           </div>
-          
-      <EditTaskModal
-        task={selectedTask}
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setSelectedTask(null);
-        }}
-        onSave={handleSaveTask}
-        userCategories={userCategories}
-        user={user}
-      />
-
-      <ConfirmModal
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        onConfirm={confirmModal.onConfirm}
-        onCancel={closeConfirmModal}
-        danger={confirmModal.danger}
-        confirmText={confirmModal.danger ? "Eliminar" : "Confirmar"}
-      />
+        </div>
+      </div>
     </div>
   );
 });
