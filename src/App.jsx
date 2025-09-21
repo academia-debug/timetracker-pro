@@ -2468,7 +2468,6 @@ const EmployeePanel = memo(({ user, onLogout }) => {
               )}
             </div>
           </div>
-
       
       <EditTaskModal
         task={selectedTask}
