@@ -2468,7 +2468,39 @@ const EmployeePanel = memo(({ user, onLogout }) => {
               )}
             </div>
           </div>
-      
+
+   <div className="space-y-6">
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Target size={20} />
+                Resumen del {formatDisplayDate(selectedDate)}
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Progreso de jornada</span>
+                    <span>{progressPercentage.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className={`h-3 rounded-full transition-all duration-300 ${
+                        progressPercentage >= 100 ? 'bg-green-500' : 
+                        progressPercentage >= 75 ? 'bg-blue-500' : 
+                        progressPercentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${progressPercentage}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>{selectedDateHours.toFixed(1)}h registradas</span>
+                    <span>{user.horas_objetivo}h objetivo</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
       <EditTaskModal
         task={selectedTask}
         isOpen={isEditModalOpen}
