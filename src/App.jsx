@@ -1,4 +1,863 @@
-import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
+// Panel de administrador COMPLETO
+const AdminPanel = memo(({ user, onLogout }) => {
+  const {
+    users,
+    tasks,
+    categories,
+    alertasArchivadas,
+    assignedTasks,
+    loading,
+    departments,
+    createUser,
+    updateUser,
+    deleteUser,
+    createCategory,
+    deleteCategory,
+    generateAlerts,
+    getAlertsWithFilters,
+    archiveAlert,
+    restoreAlert,
+    createAssignedTask,
+    updateAssignedTaskStatus,
+    deleteAssignedTask,
+    getAssignedTasksWithFilters
+  } = useSupabaseData();
+
+  const [activeTab, setActiveTab] = useState('users');
+  const [activeAnalyticsTab, setActiveAnalyticsTab] = useState('general');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    danger: false
+  });
+
+  const [newUser, setNewUser] = useState({
+    username: '',
+    password: '',
+    name: '',
+    email: '',
+    department: '',
+    horas_objetivo: 8,
+    hora_inicio: '09:00'
+  });
+
+  const [newCategory, setNewCategory] = useState({
+    department: '',
+    name: ''
+  });
+
+  const [alerts, setAlerts] = useState([]);
+
+  const tabs = [
+    { id: 'users', label: 'Gestión de Usuarios', icon: Users },
+    { id: 'categories', label: 'Gestión de Categorías', icon: Building },
+    { id: 'assign-tasks', label: 'Asignar Tareas', icon: Calendar },
+    { id: 'alerts', label: 'Gestión de Alertas', icon: AlertTriangle },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+  ];
+
+  const analyticsSubTabs = [
+    { id: 'general', label: 'Visión General' },
+    { id: 'user', label: 'Por Usuario' }
+  ];
+
+  const handleCreateUser = useCallback(async () => {
+    if (newUser.password.length < 6) {
+      setMessage('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    const result = await createUser(newUser);
+    
+    if (result.success) {
+      setNewUser({
+        username: '',
+        password: '',
+        name: '',
+        email: '',
+        department: '',
+        horas_objetivo: 8,
+        hora_inicio: '09:00'
+      });
+      setMessage('Usuario creado exitosamente');
+    } else {
+      setMessage(`Error: ${result.error}`);
+    }
+
+    setTimeout(() => setMessage(''), 3000);
+  }, [newUser, createUser]);
+
+  const handleEditUser = useCallback((user) => {
+    setSelectedUser(user);
+    setIsEditModalOpen(true);
+  }, []);
+
+  const handleSaveUser = useCallback(async (userId, userData) => {
+    const result = await updateUser(userId, userData);
+    
+    if (result.success) {
+      setIsEditModalOpen(false);
+      setSelectedUser(null);
+      setMessage('Usuario actualizado exitosamente');
+    } else {
+      setMessage(`Error: ${result.error}`);
+    }
+
+    setTimeout(() => setMessage(''), 3000);
+  }, [updateUser]);
+
+  const handleDeleteUser = useCallback(async (userId, userName) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Eliminar Usuario',
+      message: `¿Estás seguro de eliminar el usuario ${userName}? Esta acción no se puede deshacer.`,
+      danger: true,
+      onConfirm: async () => {
+        const result = await deleteUser(userId);
+        
+        if (result.success) {
+          setMessage('Usuario eliminado exitosamente');
+        } else {
+          setMessage(`Error: ${result.error}`);
+        }
+
+        setTimeout(() => setMessage(''), 3000);
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null, danger: false });
+      }
+    });
+  }, [deleteUser]);
+
+  const handleCreateCategory = useCallback(async () => {
+    if (!newCategory.department || !newCategory.name) {
+      setMessage('Todos los campos son obligatorios');
+      return;
+    }
+
+    const result = await createCategory(newCategory.department, newCategory.name);
+    
+    if (result.success) {
+      setNewCategory({ department: '', name: '' });
+      setMessage('Categoría creada exitosamente');
+    } else {
+      setMessage(`Error: ${result.error}`);
+    }
+
+    setTimeout(() => setMessage(''), 3000);
+  }, [newCategory, createCategory]);
+
+  const handleDeleteCategory = useCallback(async (categoryId, categoryName) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Eliminar Categoría',
+      message: `¿Estás seguro de eliminar la categoría "${categoryName}"?`,
+      danger: true,
+      onConfirm: async () => {
+        const result = await deleteCategory(categoryId, categoryName);
+        
+        if (result.success) {
+          setMessage('Categoría eliminada exitosamente');
+        } else {
+          setMessage(`Error: ${result.error}`);
+        }
+
+        setTimeout(() => setMessage(''), 3000);
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null, danger: false });
+      }
+    });
+  }, [deleteCategory]);
+
+  const closeConfirmModal = useCallback(() => {
+    setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null, danger: false });
+  }, []);
+
+  useEffect(() => {
+    const loadAlerts = async () => {
+      const generatedAlerts = await generateAlerts();
+      setAlerts(generatedAlerts);
+    };
+    
+    if (users.length > 0 && tasks.length >= 0) {
+      loadAlerts();
+    }
+  }, [users, tasks, generateAlerts]);
+
+  const categoriesByDepartment = useMemo(() => {
+    return categories.reduce((acc, category) => {
+      if (!acc[category.department]) {
+        acc[category.department] = [];
+      }
+      acc[category.department].push(category);
+      return acc;
+    }, {});
+  }, [categories]);
+
+  const analyticsData = useMemo(() => {
+    const totalHours = tasks.reduce((sum, task) => sum + parseFloat(task.hours), 0);
+    const totalTasks = tasks.length;
+    const activeEmployees = users.filter(u => u.role !== 'admin').length;
+
+    const hoursByEmployee = users
+      .filter(u => u.role !== 'admin')
+      .map(user => ({
+        name: user.name,
+        hours: tasks
+          .filter(task => task.user_id === user.id)
+          .reduce((sum, task) => sum + parseFloat(task.hours), 0)
+      }))
+      .sort((a, b) => b.hours - a.hours);
+
+    const hoursByCategory = tasks.reduce((acc, task) => {
+      acc[task.category] = (acc[task.category] || 0) + parseFloat(task.hours);
+      return acc;
+    }, {});
+
+    const topEmployee = hoursByEmployee[0];
+    const topCategoryEntry = Object.entries(hoursByCategory)
+      .sort(([,a], [,b]) => b - a)[0];
+
+    return {
+      totalHours: totalHours.toFixed(2),
+      totalTasks,
+      activeEmployees,
+      hoursByEmployee,
+      hoursByCategory,
+      topEmployee,
+      topCategory: topCategoryEntry ? { name: topCategoryEntry[0], hours: topCategoryEntry[1] } : null
+    };
+  }, [users, tasks]);
+
+  const renderUsersTab = () => (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg border">
+        <h3 className="text-lg font-semibold mb-4">Crear Nuevo Usuario</h3>
+        
+        {message && (
+          <div className={`mb-4 p-3 rounded-md ${
+            message.includes('Error') 
+              ? 'bg-red-100 text-red-700' 
+              : 'bg-green-100 text-green-700'
+          }`}>
+            {message}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <OptimizedInput
+            value={newUser.username}
+            onChange={(value) => setNewUser(prev => ({ ...prev, username: value }))}
+            placeholder="Username"
+            required
+          />
+          
+          <OptimizedInput
+            type="text"
+            value={newUser.password}
+            onChange={(value) => setNewUser(prev => ({ ...prev, password: value }))}
+            placeholder="Contraseña (mín. 6 caracteres)"
+            required
+          />
+          
+          <OptimizedInput
+            value={newUser.name}
+            onChange={(value) => setNewUser(prev => ({ ...prev, name: value }))}
+            placeholder="Nombre completo"
+            required
+          />
+          
+          <OptimizedInput
+            type="email"
+            value={newUser.email}
+            onChange={(value) => setNewUser(prev => ({ ...prev, email: value }))}
+            placeholder="email@empresa.com"
+            required
+          />
+          
+          <OptimizedSelect
+            value={newUser.department}
+            onChange={(value) => setNewUser(prev => ({ ...prev, department: value }))}
+            options={departments}
+            placeholder="Seleccionar departamento"
+          />
+          
+          <OptimizedInput
+            type="number"
+            min="1"
+            max="12"
+            step="0.5"
+            value={newUser.horas_objetivo}
+            onChange={(value) => setNewUser(prev => ({ ...prev, horas_objetivo: parseFloat(value) }))}
+            placeholder="Horas objetivo"
+          />
+          
+          <OptimizedInput
+            type="time"
+            value={newUser.hora_inicio}
+            onChange={(value) => setNewUser(prev => ({ ...prev, hora_inicio: value }))}
+          />
+          
+          <div className="md:col-span-2">
+            <button
+              onClick={handleCreateUser}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus size={16} />
+              Crear Usuario
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="p-4 border-b">
+          <h3 className="text-lg font-semibold">Usuarios Existentes</h3>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="p-3 text-left">Usuario</th>
+                <th className="p-3 text-left">Nombre</th>
+                <th className="p-3 text-left">Email</th>
+                <th className="p-3 text-left">Departamento</th>
+                <th className="p-3 text-left">Horas Objetivo</th>
+                <th className="p-3 text-left">Rol</th>
+                <th className="p-3 text-left">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} className="border-t hover:bg-gray-50">
+                  <td className="p-3 font-medium">{u.username}</td>
+                  <td className="p-3">{u.name}</td>
+                  <td className="p-3">{u.email}</td>
+                  <td className="p-3">{u.department}</td>
+                  <td className="p-3">{u.horas_objetivo}h</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {u.role === 'admin' ? 'Admin' : 'Empleado'}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditUser(u)}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="Editar"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      {u.role !== 'admin' && (
+                        <button
+                          onClick={() => handleDeleteUser(u.id, u.name)}
+                          className="text-red-600 hover:text-red-800"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCategoriesTab = () => (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg border">
+        <h3 className="text-lg font-semibold mb-4">Crear Nueva Categoría</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <OptimizedSelect
+            value={newCategory.department}
+            onChange={(value) => setNewCategory(prev => ({ ...prev, department: value }))}
+            options={departments}
+            placeholder="Seleccionar departamento"
+          />
+          
+          <OptimizedInput
+            value={newCategory.name}
+            onChange={(value) => setNewCategory(prev => ({ ...prev, name: value }))}
+            placeholder="Nombre de la categoría"
+            required
+          />
+          
+          <button
+            onClick={handleCreateCategory}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Plus size={16} />
+            Crear Categoría
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {Object.entries(categoriesByDepartment).map(([dept, cats]) => (
+          <div key={dept} className="bg-white p-6 rounded-lg border">
+            <h3 className="text-lg font-semibold mb-4">{dept}</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {cats.map((category) => (
+                <div
+                  key={category.id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                >
+                  <span>{category.name}</span>
+                  <button
+                    onClick={() => handleDeleteCategory(category.id, category.name)}
+                    className="text-red-600 hover:text-red-800"
+                    title="Eliminar categoría"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            {cats.length === 0 && (
+              <p className="text-gray-500 text-center py-4">
+                No hay categorías en este departamento
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderAssignTasksTab = () => (
+    <AssignTasksManagement
+      users={users}
+      assignedTasks={assignedTasks}
+      onCreateTask={createAssignedTask}
+      onDeleteTask={deleteAssignedTask}
+      onGetFiltered={getAssignedTasksWithFilters}
+    />
+  );
+
+  const renderAlertsTab = () => (
+    <AlertsManagement
+      alerts={alerts}
+      users={users}
+      onArchive={archiveAlert}
+      onRestore={restoreAlert}
+      onGetFiltered={getAlertsWithFilters}
+    />
+  );
+
+  const renderGeneralAnalytics = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-blue-50 p-6 rounded-lg">
+          <div className="text-3xl font-bold text-blue-600">{analyticsData.totalHours}h</div>
+          <div className="text-blue-600">Total de horas registradas</div>
+        </div>
+        
+        <div className="bg-green-50 p-6 rounded-lg">
+          <div className="text-3xl font-bold text-green-600">{analyticsData.totalTasks}</div>
+          <div className="text-green-600">Total de tareas</div>
+        </div>
+        
+        <div className="bg-purple-50 p-6 rounded-lg">
+          <div className="text-3xl font-bold text-purple-600">{analyticsData.activeEmployees}</div>
+          <div className="text-purple-600">Empleados activos</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold mb-4">Empleado Destacado</h3>
+          {analyticsData.topEmployee ? (
+            <div>
+              <div className="text-2xl font-bold text-blue-600">
+                {analyticsData.topEmployee.name}
+              </div>
+              <div className="text-gray-600">
+                {analyticsData.topEmployee.hours.toFixed(1)} horas registradas
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500">No hay datos disponibles</p>
+          )}
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold mb-4">Categoría Líder</h3>
+          {analyticsData.topCategory ? (
+            <div>
+              <div className="text-2xl font-bold text-green-600">
+                {analyticsData.topCategory.name}
+              </div>
+              <div className="text-gray-600">
+                {analyticsData.topCategory.hours.toFixed(1)} horas registradas
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500">No hay datos disponibles</p>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg border">
+        <h3 className="text-lg font-semibold mb-4">Horas por Empleado</h3>
+        <div className="space-y-3">
+          {analyticsData.hoursByEmployee.slice(0, 10).map((emp, index) => (
+            <div key={emp.name} className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+                  {index + 1}
+                </span>
+                <span>{emp.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-32 bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full" 
+                    style={{ 
+                      width: `${(emp.hours / Math.max(...analyticsData.hoursByEmployee.map(e => e.hours))) * 100}%` 
+                    }}
+                  ></div>
+                </div>
+                <span className="w-16 text-right font-medium">{emp.hours.toFixed(1)}h</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg border">
+        <h3 className="text-lg font-semibold mb-4">Horas por Categoría</h3>
+        <div className="space-y-3">
+          {Object.entries(analyticsData.hoursByCategory)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 10)
+            .map(([category, hours], index) => (
+              <div key={category} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium">
+                    {index + 1}
+                  </span>
+                  <span>{category}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-32 bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full" 
+                      style={{ 
+                        width: `${(hours / Math.max(...Object.values(analyticsData.hoursByCategory))) * 100}%` 
+                      }}
+                    ></div>
+                  </div>
+                  <span className="w-16 text-right font-medium">{hours.toFixed(1)}h</span>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAnalyticsTab = () => (
+    <div className="space-y-6">
+      <div className="border-b">
+        <div className="flex space-x-8">
+          {analyticsSubTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveAnalyticsTab(tab.id)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeAnalyticsTab === tab.id
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeAnalyticsTab === 'general' && renderGeneralAnalytics()}
+      {activeAnalyticsTab === 'user' && (
+        <UserAnalytics
+          users={users}
+          tasks={tasks}
+          selectedUserId={selectedUserId}
+          onUserChange={setSelectedUserId}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Panel de Administración</h1>
+              <p className="text-gray-600">Bienvenido, {user.name}</p>
+            </div>
+            <button
+              onClick={onLogout}
+              className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
+            >
+              Cerrar Sesión
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="border-b border-gray-200 mb-8">
+          <nav className="-mb-px flex space-x-8">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {loading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Cargando...</p>
+          </div>
+        )}
+
+        {!loading && (
+          <>
+            {activeTab === 'users' && renderUsersTab()}
+            {activeTab === 'categories' && renderCategoriesTab()}
+            {activeTab === 'assign-tasks' && renderAssignTasksTab()}
+            {activeTab === 'alerts' && renderAlertsTab()}
+            {activeTab === 'analytics' && renderAnalyticsTab()}
+          </>
+        )}
+      </div>
+
+      <EditUserModal
+        user={selectedUser}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedUser(null);
+        }}
+        onSave={handleSaveUser}
+        departments={departments}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirmModal}
+        danger={confirmModal.danger}
+        confirmText={confirmModal.danger ? "Eliminar" : "Confirmar"}
+      />
+    </div>
+  );
+});
+
+// Componente de Login
+const Login = memo(({ onLogin }) => {
+  const [credentials, setCredentials] = useState({
+    username: '',
+    password: ''
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const { users } = useSupabaseData();
+
+  const handleSubmit = useCallback(async () => {
+    if (!credentials.username || !credentials.password) {
+      setError('Todos los campos son obligatorios');
+      return;
+    }
+
+    if (credentials.password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const user = users.find(u => 
+      u.username === credentials.username && 
+      u.password === credentials.password
+    );
+
+    if (user) {
+      onLogin(user);
+    } else {
+      setError('Credenciales inválidas');
+    }
+
+    setLoading(false);
+  }, [credentials, users, onLogin]);
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-12 px-6">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Clock className="mx-auto h-12 w-12 text-blue-600" />
+          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+            TimeTracker Pro
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Sistema de Gestión de Tiempo Laboral
+          </p>
+        </div>
+
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <div className="space-y-6">
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                Usuario
+              </label>
+              <div className="mt-1">
+                <OptimizedInput
+                  id="username"
+                  value={credentials.username}
+                  onChange={(value) => setCredentials(prev => ({ ...prev, username: value }))}
+                  placeholder="Ingresa tu usuario"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Contraseña
+              </label>
+              <div className="mt-1">
+                <OptimizedInput
+                  id="password"
+                  value={credentials.password}
+                  onChange={(value) => setCredentials(prev => ({ ...prev, password: value }))}
+                  placeholder="Ingresa tu contraseña"
+                  showPasswordToggle={true}
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">Usuarios demo</span>
+              </div>
+            </div>
+
+            <div className="mt-4 text-sm text-gray-600 space-y-1">
+              <div>• juan / abc123</div>
+              <div>• maria / def456</div>
+              <div>• carlos / demo123</div>
+              <div>• admin / admin1</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Componente principal
+const App = () => {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  const handleLogin = useCallback((user) => {
+    setCurrentUser(user);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialized(true);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Inicializando TimeTracker Pro...</p>
+          <p className="text-sm text-gray-500">Configurando base de datos y datos demo</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  if (currentUser.role === 'admin') {
+    return <AdminPanel user={currentUser} onLogout={handleLogout} />;
+  }
+
+  return <EmployeePanel user={currentUser} onLogout={handleLogout} />;
+};
+
+export default App;import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { 
   Clock, Users, BarChart3, Calendar, Plus, Edit, Trash2, 
   Play, Pause, CheckCircle, AlertTriangle, Filter, Archive,
@@ -687,3 +1546,846 @@ const ConfirmModal = memo(({ isOpen, title, message, onConfirm, onCancel, confir
           </button>
           <button
             onClick={onConfirm}
+            className={`px-4 py-2 text-white rounded-md transition-colors ${
+              danger 
+                ? 'bg-red-600 hover:bg-red-700' 
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Modal para editar tareas
+const EditTaskModal = memo(({ task, isOpen, onClose, onSave, userCategories, user }) => {
+  const [formData, setFormData] = useState({
+    description: '',
+    category: '',
+    hours: '',
+    date: ''
+  });
+
+  useEffect(() => {
+    if (task) {
+      setFormData({
+        description: task.description || '',
+        category: task.category || '',
+        hours: task.hours || '',
+        date: task.date || ''
+      });
+    }
+  }, [task]);
+
+  const calculateEndTime = useCallback((startTime, hours) => {
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const totalMinutes = startHour * 60 + startMinute + hours * 60;
+    const endHour = Math.floor(totalMinutes / 60);
+    const endMinute = totalMinutes % 60;
+    return `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    if (!formData.description || !formData.category || !formData.hours) {
+      return;
+    }
+
+    const hours = parseFloat(formData.hours);
+    if (hours < 0.5 || hours > 12) {
+      return;
+    }
+
+    const updatedTask = {
+      ...formData,
+      hours: hours,
+      horario: `${user.hora_inicio}-${calculateEndTime(user.hora_inicio, hours)}`
+    };
+
+    onSave(task.id, updatedTask);
+  }, [task, formData, onSave, user, calculateEndTime]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg max-w-md w-full m-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Editar Tarea</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Descripción *</label>
+            <OptimizedInput
+              value={formData.description}
+              onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+              placeholder="Descripción de la tarea"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Categoría *</label>
+            <OptimizedSelect
+              value={formData.category}
+              onChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+              options={userCategories.map(cat => cat.name)}
+              placeholder="Seleccionar categoría"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Horas *</label>
+            <OptimizedInput
+              type="number"
+              min="0.5"
+              max="12"
+              step="0.5"
+              value={formData.hours}
+              onChange={(value) => setFormData(prev => ({ ...prev, hours: value }))}
+              placeholder="Ej: 2.5"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Fecha *</label>
+            <OptimizedInput
+              type="date"
+              value={formData.date}
+              onChange={(value) => setFormData(prev => ({ ...prev, date: value }))}
+              required
+            />
+          </div>
+          
+          <div className="flex gap-2 pt-4">
+            <button
+              onClick={handleSubmit}
+              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
+            >
+              <Save size={16} />
+              Guardar Cambios
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const EditUserModal = memo(({ user, isOpen, onClose, onSave, departments }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    department: '',
+    horas_objetivo: 8,
+    hora_inicio: '09:00',
+    password: ''
+  });
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+        department: user.department || '',
+        horas_objetivo: user.horas_objetivo || 8,
+        hora_inicio: user.hora_inicio || '09:00',
+        password: user.password || ''
+      });
+    }
+  }, [user]);
+
+  const handleSubmit = useCallback(() => {
+    onSave(user.id, formData);
+  }, [user, formData, onSave]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg max-w-md w-full m-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Editar Usuario</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Username (no editable)</label>
+            <input
+              type="text"
+              value={user?.username || ''}
+              disabled
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Nombre completo</label>
+            <OptimizedInput
+              value={formData.name}
+              onChange={(value) => setFormData(prev => ({ ...prev, name: value }))}
+              placeholder="Nombre completo"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Email</label>
+            <OptimizedInput
+              type="email"
+              value={formData.email}
+              onChange={(value) => setFormData(prev => ({ ...prev, email: value }))}
+              placeholder="email@empresa.com"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Departamento</label>
+            <OptimizedSelect
+              value={formData.department}
+              onChange={(value) => setFormData(prev => ({ ...prev, department: value }))}
+              options={departments}
+              placeholder="Seleccionar departamento"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Horas objetivo</label>
+            <OptimizedInput
+              type="number"
+              min="1"
+              max="12"
+              step="0.5"
+              value={formData.horas_objetivo}
+              onChange={(value) => setFormData(prev => ({ ...prev, horas_objetivo: parseFloat(value) }))}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Hora de inicio</label>
+            <OptimizedInput
+              type="time"
+              value={formData.hora_inicio}
+              onChange={(value) => setFormData(prev => ({ ...prev, hora_inicio: value }))}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Contraseña</label>
+            <OptimizedInput
+              type="text"
+              value={formData.password}
+              onChange={(value) => setFormData(prev => ({ ...prev, password: value }))}
+              placeholder="Contraseña"
+              required
+            />
+          </div>
+          
+          <div className="flex gap-2 pt-4">
+            <button
+              onClick={handleSubmit}
+              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
+            >
+              <Save size={16} />
+              Guardar Cambios
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Componente de gestión de tareas asignadas (Admin)
+const AssignTasksManagement = memo(({ users, assignedTasks, onCreateTask, onDeleteTask, onGetFiltered }) => {
+  const [newAssignedTask, setNewAssignedTask] = useState({
+    assigned_to: '',
+    title: '',
+    description: '',
+    category: '',
+    due_date: '',
+    priority: 'normal'
+  });
+
+  const [filters, setFilters] = useState({
+    assigned_to: '',
+    status: 'todas',
+    priority: 'todas'
+  });
+
+  const [filteredTasks, setFilteredTasks] = useState([]);
+  const [message, setMessage] = useState('');
+
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  const priorityOptions = [
+    { value: 'baja', label: 'Baja', color: 'bg-gray-100 text-gray-800' },
+    { value: 'normal', label: 'Normal', color: 'bg-blue-100 text-blue-800' },
+    { value: 'alta', label: 'Alta', color: 'bg-orange-100 text-orange-800' },
+    { value: 'urgente', label: 'Urgente', color: 'bg-red-100 text-red-800' }
+  ];
+
+  useEffect(() => {
+    const applyFilters = async () => {
+      const filtered = await onGetFiltered(filters);
+      setFilteredTasks(filtered);
+    };
+    applyFilters();
+  }, [filters, assignedTasks, onGetFiltered]);
+
+  const handleCreateTask = useCallback(async () => {
+    if (!newAssignedTask.assigned_to || !newAssignedTask.title) {
+      setMessage('El empleado y el título son obligatorios');
+      return;
+    }
+
+    if (newAssignedTask.due_date && new Date(newAssignedTask.due_date) < new Date()) {
+      setMessage('La fecha límite no puede ser en el pasado');
+      return;
+    }
+
+    const taskData = {
+      ...newAssignedTask,
+      assigned_by: 3,
+      assigned_to: parseInt(newAssignedTask.assigned_to)
+    };
+
+    const result = await onCreateTask(taskData);
+    
+    if (result.success) {
+      setNewAssignedTask({
+        assigned_to: '',
+        title: '',
+        description: '',
+        category: '',
+        due_date: '',
+        priority: 'normal'
+      });
+      setMessage('Tarea asignada exitosamente');
+    } else {
+      setMessage(`Error: ${result.error}`);
+    }
+
+    setTimeout(() => setMessage(''), 3000);
+  }, [newAssignedTask, onCreateTask]);
+
+  const handleDeleteTask = useCallback((taskId, taskTitle) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Eliminar Tarea Asignada',
+      message: `¿Estás seguro de eliminar la tarea "${taskTitle}"?`,
+      onConfirm: async () => {
+        const result = await onDeleteTask(taskId);
+        
+        if (result.success) {
+          setMessage('Tarea eliminada exitosamente');
+        } else {
+          setMessage(`Error: ${result.error}`);
+        }
+
+        setTimeout(() => setMessage(''), 3000);
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+      }
+    });
+  }, [onDeleteTask]);
+
+  const closeConfirmModal = useCallback(() => {
+    setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+  }, []);
+
+  const getPriorityConfig = useCallback((priority) => {
+    return priorityOptions.find(p => p.value === priority) || priorityOptions[1];
+  }, [priorityOptions]);
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg border">
+        <h3 className="text-lg font-semibold mb-4">Asignar Nueva Tarea</h3>
+        
+        {message && (
+          <div className={`mb-4 p-3 rounded-md ${
+            message.includes('Error') 
+              ? 'bg-red-100 text-red-700' 
+              : 'bg-green-100 text-green-700'
+          }`}>
+            {message}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Empleado *</label>
+            <OptimizedSelect
+              value={newAssignedTask.assigned_to}
+              onChange={(value) => setNewAssignedTask(prev => ({ ...prev, assigned_to: value }))}
+              options={users.filter(u => u.role !== 'admin').map(u => ({ value: u.id, label: u.name }))}
+              placeholder="Seleccionar empleado"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Título de la tarea *</label>
+            <OptimizedInput
+              value={newAssignedTask.title}
+              onChange={(value) => setNewAssignedTask(prev => ({ ...prev, title: value }))}
+              placeholder="Título de la tarea"
+              required
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">Descripción</label>
+            <textarea
+              value={newAssignedTask.description}
+              onChange={(e) => setNewAssignedTask(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Descripción detallada de la tarea"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Categoría</label>
+            <OptimizedInput
+              value={newAssignedTask.category}
+              onChange={(value) => setNewAssignedTask(prev => ({ ...prev, category: value }))}
+              placeholder="Categoría de la tarea"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Fecha límite</label>
+            <OptimizedInput
+              type="date"
+              value={newAssignedTask.due_date}
+              onChange={(value) => setNewAssignedTask(prev => ({ ...prev, due_date: value }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Prioridad</label>
+            <OptimizedSelect
+              value={newAssignedTask.priority}
+              onChange={(value) => setNewAssignedTask(prev => ({ ...prev, priority: value }))}
+              options={priorityOptions.map(p => ({ value: p.value, label: p.label }))}
+            />
+          </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={handleCreateTask}
+              className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
+            >
+              <Plus size={16} />
+              Asignar Tarea
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg border">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <OptimizedSelect
+            value={filters.assigned_to}
+            onChange={(value) => setFilters(prev => ({ ...prev, assigned_to: value }))}
+            options={[
+              { value: '', label: 'Todos los empleados' },
+              ...users.filter(u => u.role !== 'admin').map(u => ({ value: u.id, label: u.name }))
+            ]}
+          />
+          
+          <OptimizedSelect
+            value={filters.status}
+            onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+            options={[
+              { value: 'todas', label: 'Todos los estados' },
+              { value: 'pending', label: 'Pendientes' },
+              { value: 'completed', label: 'Completadas' }
+            ]}
+          />
+          
+          <OptimizedSelect
+            value={filters.priority}
+            onChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}
+            options={[
+              { value: 'todas', label: 'Todas las prioridades' },
+              ...priorityOptions.map(p => ({ value: p.value, label: p.label }))
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="p-4 border-b">
+          <h3 className="text-lg font-semibold">Tareas Asignadas</h3>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="p-3 text-left">Empleado</th>
+                <th className="p-3 text-left">Título</th>
+                <th className="p-3 text-left">Categoría</th>
+                <th className="p-3 text-left">Fecha límite</th>
+                <th className="p-3 text-left">Prioridad</th>
+                <th className="p-3 text-left">Estado</th>
+                <th className="p-3 text-left">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTasks.map((task) => {
+                const employee = users.find(u => u.id === task.assigned_to);
+                const priorityConfig = getPriorityConfig(task.priority);
+                
+                return (
+                  <tr key={task.id} className="border-t hover:bg-gray-50">
+                    <td className="p-3">
+                      <div className="font-medium">{employee?.name || 'Usuario no encontrado'}</div>
+                    </td>
+                    <td className="p-3">
+                      <div>
+                        <div className="font-medium">{task.title}</div>
+                        {task.description && (
+                          <div className="text-sm text-gray-500 mt-1">{task.description}</div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      {task.category && (
+                        <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs">
+                          {task.category}
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      {task.due_date ? task.due_date : '-'}
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded-full text-xs ${priorityConfig.color}`}>
+                        {priorityConfig.label}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        task.status === 'completed' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {task.status === 'completed' ? 'Completada' : 'Pendiente'}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => handleDeleteTask(task.id, task.title)}
+                        className="text-red-600 hover:text-red-800"
+                        title="Eliminar tarea"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        
+        {filteredTasks.length === 0 && (
+          <div className="p-8 text-center text-gray-500">
+            No se encontraron tareas asignadas con los filtros aplicados
+          </div>
+        )}
+      </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirmModal}
+        confirmText="Eliminar"
+        danger={true}
+      />
+    </div>
+  );
+});
+
+const AlertsManagement = memo(({ alerts, users, onArchive, onRestore, onGetFiltered }) => {
+  const [filters, setFilters] = useState({
+    empleado_id: '',
+    severity: 'todas',
+    status: 'todas',
+    fecha_desde: '',
+    fecha_hasta: ''
+  });
+  const [filteredAlerts, setFilteredAlerts] = useState([]);
+  const [selectedAlerts, setSelectedAlerts] = useState([]);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  const severityConfig = {
+    'critico': { label: 'Crítico', color: 'bg-red-100 text-red-800', icon: AlertTriangle },
+    'moderado': { label: 'Moderado', color: 'bg-orange-100 text-orange-800', icon: AlertTriangle },
+    'leve': { label: 'Leve', color: 'bg-yellow-100 text-yellow-800', icon: AlertTriangle }
+  };
+
+  useEffect(() => {
+    const applyFilters = async () => {
+      const filtered = await onGetFiltered(filters);
+      setFilteredAlerts(filtered);
+    };
+    applyFilters();
+  }, [filters, alerts, onGetFiltered]);
+
+  const counters = useMemo(() => {
+    const active = filteredAlerts.filter(alert => alert.status === 'active');
+    return {
+      total: active.length,
+      critico: active.filter(alert => alert.severity === 'critico').length,
+      moderado: active.filter(alert => alert.severity === 'moderado').length,
+      leve: active.filter(alert => alert.severity === 'leve').length
+    };
+  }, [filteredAlerts]);
+
+  const handleSelectAll = useCallback((checked) => {
+    if (checked) {
+      setSelectedAlerts(filteredAlerts.map(alert => alert.alert_id));
+    } else {
+      setSelectedAlerts([]);
+    }
+  }, [filteredAlerts]);
+
+  const handleSelectAlert = useCallback((alertId, checked) => {
+    if (checked) {
+      setSelectedAlerts(prev => [...prev, alertId]);
+    } else {
+      setSelectedAlerts(prev => prev.filter(id => id !== alertId));
+    }
+  }, []);
+
+  const handleArchiveSelected = useCallback(async () => {
+    if (selectedAlerts.length === 0) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      title: 'Archivar Alertas',
+      message: `¿Estás seguro de archivar ${selectedAlerts.length} alerta(s) seleccionada(s)?`,
+      onConfirm: async () => {
+        for (const alertId of selectedAlerts) {
+          await onArchive(alertId);
+        }
+        setSelectedAlerts([]);
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+      }
+    });
+  }, [selectedAlerts, onArchive]);
+
+  const handleArchiveAlert = useCallback(async (alertId) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Archivar Alerta',
+      message: '¿Estás seguro de archivar esta alerta?',
+      onConfirm: async () => {
+        await onArchive(alertId);
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+      }
+    });
+  }, [onArchive]);
+
+  const closeConfirmModal = useCallback(() => {
+    setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-blue-600">{counters.total}</div>
+          <div className="text-sm text-blue-600">Total Activas</div>
+        </div>
+        <div className="bg-red-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-red-600">{counters.critico}</div>
+          <div className="text-sm text-red-600">Críticas</div>
+        </div>
+        <div className="bg-orange-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-orange-600">{counters.moderado}</div>
+          <div className="text-sm text-orange-600">Moderadas</div>
+        </div>
+        <div className="bg-yellow-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-yellow-600">{counters.leve}</div>
+          <div className="text-sm text-yellow-600">Leves</div>
+        </div>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg border">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <OptimizedSelect
+            value={filters.empleado_id}
+            onChange={(value) => setFilters(prev => ({ ...prev, empleado_id: value }))}
+            options={[
+              { value: '', label: 'Todos los empleados' },
+              ...users.filter(u => u.role !== 'admin').map(u => ({ value: u.id, label: u.name }))
+            ]}
+          />
+          
+          <OptimizedSelect
+            value={filters.severity}
+            onChange={(value) => setFilters(prev => ({ ...prev, severity: value }))}
+            options={[
+              { value: 'todas', label: 'Todas las severidades' },
+              { value: 'critico', label: 'Crítico' },
+              { value: 'moderado', label: 'Moderado' },
+              { value: 'leve', label: 'Leve' }
+            ]}
+          />
+          
+          <OptimizedSelect
+            value={filters.status}
+            onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+            options={[
+              { value: 'todas', label: 'Todos los estados' },
+              { value: 'active', label: 'Activas' },
+              { value: 'archived', label: 'Archivadas' }
+            ]}
+          />
+          
+          <OptimizedInput
+            type="date"
+            value={filters.fecha_desde}
+            onChange={(value) => setFilters(prev => ({ ...prev, fecha_desde: value }))}
+            placeholder="Fecha desde"
+          />
+          
+          <OptimizedInput
+            type="date"
+            value={filters.fecha_hasta}
+            onChange={(value) => setFilters(prev => ({ ...prev, fecha_hasta: value }))}
+            placeholder="Fecha hasta"
+          />
+        </div>
+      </div>
+
+      {selectedAlerts.length > 0 && (
+        <div className="bg-blue-50 p-4 rounded-lg flex items-center justify-between">
+          <span className="text-blue-700">
+            {selectedAlerts.length} alerta(s) seleccionada(s)
+          </span>
+          <button
+            onClick={handleArchiveSelected}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Archive size={16} />
+            Archivar seleccionadas
+          </button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="p-3 text-left">
+                  <input
+                    type="checkbox"
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    checked={selectedAlerts.length === filteredAlerts.length && filteredAlerts.length > 0}
+                  />
+                </th>
+                <th className="p-3 text-left">Empleado</th>
+                <th className="p-3 text-left">Fecha</th>
+                <th className="p-3 text-left">Severidad</th>
+                <th className="p-3 text-left">Horas</th>
+                <th className="p-3 text-left">Estado</th>
+                <th className="p-3 text-left">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAlerts.map((alert) => {
+                const config = severityConfig[alert.severity];
+                const Icon = config.icon;
+                
+                return (
+                  <tr key={alert.alert_id} className="border-t hover:bg-gray-50">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedAlerts.includes(alert.alert_id)}
+                        onChange={(e) => handleSelectAlert(alert.alert_id, e.target.checked)}
+                      />
+                    </td>
+                    <td className="p-3">
+                      <div>
+                        <div className="font-medium">{alert.empleado_name}</div>
+                        <div className="text-sm text-gray-500">{alert.departamento}</div>
+                      </div>
+                    </td>
+                    <td className="p-3">{alert.fecha}</td>
+                    <td className="p-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${config.color}`}>
+                        <Icon size={12} />
+                        {config.label}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="text-sm">
+                        <div>{alert.horas_registradas}h / {alert.horas_objetivo}h</div>
+                        <div className="text-red-500">Faltan: {alert.horas_faltantes}h</div>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        alert.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {alert.status === 'active' ? 'Activa' : 'Archivada'}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex gap-2">
+                        {alert.status === 'active' ? (
+                          <button
+                            onClick={() => handleArchiveAlert(alert.alert_id)}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Archivar"
+                          >
+                            <Archive size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onRestore(alert.alert_id)}
+                            className="text-green-600 hover:text-green-800"
+                            title="Restaurar"
+                          >
