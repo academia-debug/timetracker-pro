@@ -7,7 +7,6 @@ import {
   Bell, CheckSquare, Square, RotateCcw
 } from 'lucide-react';
 
-// Hook personalizado para manejo de datos (SIMULADO LOCALMENTE)
 const useSupabaseData = () => {
   const [users, setUsers] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -20,6 +19,433 @@ const useSupabaseData = () => {
   const [initialized, setInitialized] = useState(false);
 
   const departments = ['Marketing', 'Ventas', 'Atención al Cliente', 'Administración', 'Edición', 'Equipo Docente'];
+
+  // Cargar datos iniciales
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [usersRes, tasksRes, categoriesRes, justifiedRes, assignedRes] = await Promise.all([
+        supabase.from('users').select('*'),
+        supabase.from('tasks').select('*'),
+        supabase.from('categories').select('*'),
+        supabase.from('justified_days').select('*'),
+        supabase.from('assigned_tasks').select('*')
+      ]);
+
+      if (usersRes.error) throw usersRes.error;
+      if (tasksRes.error) throw tasksRes.error;
+      if (categoriesRes.error) throw categoriesRes.error;
+      if (justifiedRes.error) throw justifiedRes.error;
+      if (assignedRes.error) throw assignedRes.error;
+
+      setUsers(usersRes.data || []);
+      setTasks(tasksRes.data || []);
+      setCategories(categoriesRes.data || []);
+      setDiasJustificados(justifiedRes.data || []);
+      setAssignedTasks(assignedRes.data || []);
+      
+      setInitialized(true);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error loading data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // CRUD de usuarios
+  const createUser = useCallback(async (userData) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .insert([userData])
+        .select();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setUsers(prev => [...prev, data[0]]);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const updateUser = useCallback(async (userId, userData) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update(userData)
+        .eq('id', userId)
+        .select();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setUsers(prev => prev.map(user => 
+        user.id === userId ? data[0] : user
+      ));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const deleteUser = useCallback(async (userId) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setUsers(prev => prev.filter(user => user.id !== userId));
+      setTasks(prev => prev.filter(task => task.user_id !== userId));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // CRUD de tareas
+  const createTask = useCallback(async (taskData) => {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert([taskData])
+        .select();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setTasks(prev => [...prev, data[0]]);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const updateTask = useCallback(async (taskId, taskData) => {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .update(taskData)
+        .eq('id', taskId)
+        .select();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setTasks(prev => prev.map(task => 
+        task.id === taskId ? data[0] : task
+      ));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const deleteTask = useCallback(async (taskId) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setTasks(prev => prev.filter(task => task.id !== taskId));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // CRUD de categorías
+  const createCategory = useCallback(async (department, categoryName) => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .insert([{ department, name: categoryName }])
+        .select();
+
+      if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+          return { success: false, error: 'La categoría ya existe en este departamento' };
+        }
+        return { success: false, error: error.message };
+      }
+
+      setCategories(prev => [...prev, data[0]]);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const deleteCategory = useCallback(async (categoryId, categoryName) => {
+    try {
+      // Verificar si hay tareas asociadas
+      const { data: tasksWithCategory } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('category', categoryName);
+
+      if (tasksWithCategory && tasksWithCategory.length > 0) {
+        return { success: false, error: 'No se puede eliminar: hay tareas asociadas a esta categoría' };
+      }
+
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', categoryId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setCategories(prev => prev.filter(cat => cat.id !== categoryId));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Generar alertas desde la vista
+  const generateAlerts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_alerts')
+        .select('*');
+
+      if (error) {
+        console.error('Error generating alerts:', error);
+        return [];
+      }
+
+      const alerts = data.map(alert => ({
+        ...alert,
+        status: 'active'
+      }));
+
+      setAlertasArchivadas(alerts);
+      return alerts;
+    } catch (err) {
+      console.error('Error generating alerts:', err);
+      return [];
+    }
+  }, []);
+
+  const getAlertsWithFilters = useCallback(async (filters) => {
+    try {
+      let query = supabase.from('user_alerts').select('*');
+      
+      if (filters.empleado_id) {
+        query = query.eq('empleado_id', filters.empleado_id);
+      }
+      
+      if (filters.severity && filters.severity !== 'todas') {
+        query = query.eq('severity', filters.severity);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error filtering alerts:', error);
+        return [];
+      }
+
+      return data.map(alert => ({
+        ...alert,
+        status: 'active'
+      }));
+    } catch (err) {
+      console.error('Error filtering alerts:', err);
+      return [];
+    }
+  }, []);
+
+  // Placeholder para archivar alertas (las alertas se calculan dinámicamente)
+  const archiveAlert = useCallback(async (alertId) => {
+    return { success: true };
+  }, []);
+
+  const restoreAlert = useCallback(async (alertId) => {
+    return { success: true };
+  }, []);
+
+  // CRUD de tareas asignadas
+  const createAssignedTask = useCallback(async (taskData) => {
+    try {
+      const { data, error } = await supabase
+        .from('assigned_tasks')
+        .insert([taskData])
+        .select();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setAssignedTasks(prev => [...prev, data[0]]);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const updateAssignedTaskStatus = useCallback(async (taskId, status) => {
+    try {
+      const updateData = { 
+        status,
+        completed_at: status === 'completed' ? new Date().toISOString() : null 
+      };
+
+      const { data, error } = await supabase
+        .from('assigned_tasks')
+        .update(updateData)
+        .eq('id', taskId)
+        .select();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setAssignedTasks(prev => prev.map(task => 
+        task.id === taskId ? data[0] : task
+      ));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const deleteAssignedTask = useCallback(async (taskId) => {
+    try {
+      const { error } = await supabase
+        .from('assigned_tasks')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      setAssignedTasks(prev => prev.filter(task => task.id !== taskId));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const getAssignedTasksWithFilters = useCallback(async (filters) => {
+    try {
+      let query = supabase.from('assigned_tasks').select('*');
+      
+      if (filters.assigned_to) {
+        query = query.eq('assigned_to', filters.assigned_to);
+      }
+      
+      if (filters.status && filters.status !== 'todas') {
+        query = query.eq('status', filters.status);
+      }
+      
+      if (filters.priority && filters.priority !== 'todas') {
+        query = query.eq('priority', filters.priority);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error filtering assigned tasks:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (err) {
+      console.error('Error filtering assigned tasks:', err);
+      return [];
+    }
+  }, []);
+
+  // Marcar día como festivo/vacaciones
+  const markDayAsHoliday = useCallback(async (userId, date) => {
+    try {
+      const { data, error } = await supabase
+        .from('justified_days')
+        .insert([{
+          user_id: userId,
+          date: date,
+          type: 'holiday_vacation',
+          status: 'pending'
+        }])
+        .select();
+
+      if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+          return { success: false, error: 'Ya existe una justificación para este día' };
+        }
+        return { success: false, error: error.message };
+      }
+
+      setDiasJustificados(prev => [...prev, data[0]]);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Inicialización
+  useEffect(() => {
+    if (!initialized) {
+      loadInitialData();
+    }
+  }, [initialized, loadInitialData]);
+
+  // Generar alertas cuando los datos estén listos
+  useEffect(() => {
+    if (initialized && users.length > 0) {
+      generateAlerts();
+    }
+  }, [initialized, users, tasks, generateAlerts]);
+
+  return {
+    users,
+    tasks,
+    categories,
+    diasJustificados,
+    alertasArchivadas,
+    assignedTasks,
+    loading,
+    error,
+    departments,
+    createUser,
+    updateUser,
+    deleteUser,
+    createTask,
+    updateTask,
+    deleteTask,
+    createCategory,
+    deleteCategory,
+    generateAlerts,
+    getAlertsWithFilters,
+    archiveAlert,
+    restoreAlert,
+    createAssignedTask,
+    updateAssignedTaskStatus,
+    deleteAssignedTask,
+    getAssignedTasksWithFilters,
+    markDayAsHoliday
+  };
+};
 
   // Datos iniciales
   const initialUsers = [
