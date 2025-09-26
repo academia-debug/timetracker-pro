@@ -2036,6 +2036,7 @@ const AssignedTasks = memo(({ userId, assignedTasks, onUpdateStatus }) => {
 });
 
 // Panel de empleado
+// Panel de empleado - MODIFICADO PARA UNA SOLA COLUMNA
 const EmployeePanel = memo(({ user, onLogout }) => {
   const {
     tasks,
@@ -2251,254 +2252,251 @@ const EmployeePanel = memo(({ user, onLogout }) => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-           {/* Navegador de fechas */}
-<div className="bg-white p-4 rounded-lg shadow">
-  <div className="flex items-center justify-between">
-    <button
-      onClick={goToPreviousDay}
-      className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-    >
-      <span>←</span> Día anterior
-    </button>
-    
-    <div className="text-center flex flex-col items-center gap-2">
-      <div className="font-semibold text-lg">{formatDisplayDate(selectedDate)}</div>
-      <OptimizedInput
-        type="date"
-        value={selectedDate}
-        onChange={(value) => setSelectedDate(value)}
-        className="text-center text-sm w-40"
-      />
-    </div>
-    
-    <div className="flex gap-2">
-      <button
-        onClick={goToToday}
-        className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
-      >
-        Hoy
-      </button>
-      <button
-        onClick={goToNextDay}
-        className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-      >
-        Día siguiente <span>→</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-            {/* Información Personal */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <User size={20} />
-                Información Personal
-              </h2>
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <span className="text-sm text-gray-500">Departamento:</span>
-                  <div className="font-medium">{user.department}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tareas Asignadas */}
-            <AssignedTasks
-              userId={user.id}
-              assignedTasks={assignedTasks}
-              onUpdateStatus={handleAssignedTaskUpdate}
-            />
-
-            {/* Mis Incidencias */}
-            <MisIncidencias
-              user={user}
-              alertasArchivadas={alertasArchivadas}
-              diasJustificados={diasJustificados}
-              onMarkAsHoliday={markDayAsHoliday}
-            />
-
-            {/* Nueva Tarea */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Plus size={20} />
-                Nueva Tarea para {formatDisplayDate(selectedDate)}
-              </h2>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          {/* Navegador de fechas */}
+          <div className="bg-white p-4 rounded-lg shadow">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={goToPreviousDay}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                <span>←</span> Día anterior
+              </button>
               
-              {message && (
-                <div className={`mb-4 p-3 rounded-md ${
-                  message.includes('Error') 
-                    ? 'bg-red-100 text-red-700' 
-                    : 'bg-green-100 text-green-700'
-                }`}>
-                  {message}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Descripción *</label>
-                  <OptimizedInput
-                    value={newTask.description}
-                    onChange={(value) => setNewTask(prev => ({ ...prev, description: value }))}
-                    placeholder="Descripción de la tarea"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Categoría *</label>
-                  <OptimizedSelect
-                    value={newTask.category}
-                    onChange={(value) => setNewTask(prev => ({ ...prev, category: value }))}
-                    options={userCategories.map(cat => cat.name)}
-                    placeholder="Seleccionar categoría"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Horas *</label>
-                    <OptimizedInput
-                      type="number"
-                      min="0.5"
-                      max="12"
-                      step="0.5"
-                      value={newTask.hours}
-                      onChange={(value) => setNewTask(prev => ({ ...prev, hours: value }))}
-                      placeholder="Ej: 2.5"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Fecha *</label>
-                    <OptimizedInput
-                      type="date"
-                      value={newTask.date}
-                      onChange={(value) => setNewTask(prev => ({ ...prev, date: value }))}
-                      required
-                    />
-                  </div>
-                </div>
-
+              <div className="text-center flex flex-col items-center gap-2">
+                <div className="font-semibold text-lg">{formatDisplayDate(selectedDate)}</div>
+                <OptimizedInput
+                  type="date"
+                  value={selectedDate}
+                  onChange={(value) => setSelectedDate(value)}
+                  className="text-center text-sm w-40"
+                />
+              </div>
+              
+              <div className="flex gap-2">
                 <button
-                  onClick={handleSubmitTask}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
+                  onClick={goToToday}
+                  className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
                 >
-                  <Plus size={16} />
-                  Crear Tarea
+                  Hoy
+                </button>
+                <button
+                  onClick={goToNextDay}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                >
+                  Día siguiente <span>→</span>
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* Tareas del día seleccionado */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <FileText size={20} />
-                Tareas del {formatDisplayDate(selectedDate)}
-                {activeTimerId && (
-                  <span className="text-sm font-normal text-green-600">
-                    (Temporizador activo)
-                  </span>
-                )}
-              </h2>
-
-              {selectedDateTasks.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2">Descripción</th>
-                        <th className="text-left py-2">Categoría</th>
-                        <th className="text-left py-2">Horas</th>
-                        <th className="text-left py-2">Horario</th>
-                        <th className="text-left py-2">Temporizador</th>
-                        <th className="text-left py-2">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedDateTasks.map((task) => (
-                        <tr key={task.id} className="border-b hover:bg-gray-50">
-                          <td className="py-2">{task.description}</td>
-                          <td className="py-2">
-                            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                              {task.category}
-                            </span>
-                          </td>
-                          <td className="py-2">{task.hours}h</td>
-                          <td className="py-2">{task.horario}</td>
-                          <td className="py-2">
-                            <TimerComponent
-                              taskId={task.id}
-                              initialHours={parseFloat(task.hours)}
-                              onTimeUpdate={handleTimeUpdate}
-                              isActive={activeTimerId === task.id}
-                              onToggle={handleTimerToggle}
-                            />
-                          </td>
-                          <td className="py-2">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleEditTask(task)}
-                                className="text-blue-600 hover:text-blue-800"
-                                title="Editar tarea"
-                              >
-                                <Edit size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTask(task.id, task.description)}
-                                className="text-red-600 hover:text-red-800"
-                                title="Eliminar tarea"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-4">
-                  No hay tareas registradas para este día
-                </p>
-              )}
+          {/* Información Personal */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <User size={20} />
+              Información Personal
+            </h2>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <span className="text-sm text-gray-500">Departamento:</span>
+                <div className="font-medium">{user.department}</div>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Target size={20} />
-                Resumen del {formatDisplayDate(selectedDate)}
-              </h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Progreso de jornada</span>
-                    <span>{progressPercentage.toFixed(0)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div 
-                      className={`h-3 rounded-full transition-all duration-300 ${
-                        progressPercentage >= 100 ? 'bg-green-500' : 
-                        progressPercentage >= 75 ? 'bg-blue-500' : 
-                        progressPercentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-                      }`}
-                      style={{ width: `${progressPercentage}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>{selectedDateHours.toFixed(1)}h registradas</span>
-                    <span>{user.horas_objetivo}h objetivo</span>
-                  </div>
+          {/* Tareas Asignadas */}
+          <AssignedTasks
+            userId={user.id}
+            assignedTasks={assignedTasks}
+            onUpdateStatus={handleAssignedTaskUpdate}
+          />
+
+          {/* Mis Incidencias */}
+          <MisIncidencias
+            user={user}
+            alertasArchivadas={alertasArchivadas}
+            diasJustificados={diasJustificados}
+            onMarkAsHoliday={markDayAsHoliday}
+          />
+
+          {/* Resumen del día seleccionado - MOVIDO AQUÍ */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <Target size={20} />
+              Resumen del {formatDisplayDate(selectedDate)}
+            </h2>
+            
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Progreso de jornada</span>
+                  <span>{progressPercentage.toFixed(0)}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className={`h-3 rounded-full transition-all duration-300 ${
+                      progressPercentage >= 100 ? 'bg-green-500' : 
+                      progressPercentage >= 75 ? 'bg-blue-500' : 
+                      progressPercentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${progressPercentage}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>{selectedDateHours.toFixed(1)}h registradas</span>
+                  <span>{user.horas_objetivo}h objetivo</span>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Nueva Tarea */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <Plus size={20} />
+              Nueva Tarea para {formatDisplayDate(selectedDate)}
+            </h2>
+            
+            {message && (
+              <div className={`mb-4 p-3 rounded-md ${
+                message.includes('Error') 
+                  ? 'bg-red-100 text-red-700' 
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                {message}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Descripción *</label>
+                <OptimizedInput
+                  value={newTask.description}
+                  onChange={(value) => setNewTask(prev => ({ ...prev, description: value }))}
+                  placeholder="Descripción de la tarea"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Categoría *</label>
+                <OptimizedSelect
+                  value={newTask.category}
+                  onChange={(value) => setNewTask(prev => ({ ...prev, category: value }))}
+                  options={userCategories.map(cat => cat.name)}
+                  placeholder="Seleccionar categoría"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Horas *</label>
+                  <OptimizedInput
+                    type="number"
+                    min="0.5"
+                    max="12"
+                    step="0.5"
+                    value={newTask.hours}
+                    onChange={(value) => setNewTask(prev => ({ ...prev, hours: value }))}
+                    placeholder="Ej: 2.5"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Fecha *</label>
+                  <OptimizedInput
+                    type="date"
+                    value={newTask.date}
+                    onChange={(value) => setNewTask(prev => ({ ...prev, date: value }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleSubmitTask}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                <Plus size={16} />
+                Crear Tarea
+              </button>
+            </div>
+          </div>
+
+          {/* Tareas del día seleccionado */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <FileText size={20} />
+              Tareas del {formatDisplayDate(selectedDate)}
+              {activeTimerId && (
+                <span className="text-sm font-normal text-green-600">
+                  (Temporizador activo)
+                </span>
+              )}
+            </h2>
+
+            {selectedDateTasks.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2">Descripción</th>
+                      <th className="text-left py-2">Categoría</th>
+                      <th className="text-left py-2">Horas</th>
+                      <th className="text-left py-2">Horario</th>
+                      <th className="text-left py-2">Temporizador</th>
+                      <th className="text-left py-2">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedDateTasks.map((task) => (
+                      <tr key={task.id} className="border-b hover:bg-gray-50">
+                        <td className="py-2">{task.description}</td>
+                        <td className="py-2">
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                            {task.category}
+                          </span>
+                        </td>
+                        <td className="py-2">{task.hours}h</td>
+                        <td className="py-2">{task.horario}</td>
+                        <td className="py-2">
+                          <TimerComponent
+                            taskId={task.id}
+                            initialHours={parseFloat(task.hours)}
+                            onTimeUpdate={handleTimeUpdate}
+                            isActive={activeTimerId === task.id}
+                            onToggle={handleTimerToggle}
+                          />
+                        </td>
+                        <td className="py-2">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEditTask(task)}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Editar tarea"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTask(task.id, task.description)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Eliminar tarea"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">
+                No hay tareas registradas para este día
+              </p>
+            )}
           </div>
         </div>
       </div>
