@@ -6,7 +6,9 @@ import {
   TrendingUp, PieChart, Activity, FileText, Settings,
   Bell, CheckSquare, Square, RotateCcw
 } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
+// Hook personalizado para Supabase REAL
 const useSupabaseData = () => {
   const [users, setUsers] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -446,7 +448,6 @@ const useSupabaseData = () => {
     markDayAsHoliday
   };
 };
-
   // Datos iniciales
   const initialUsers = [
     { id: 1, username: 'juan', password: 'abc123', name: 'Juan Pérez', email: 'juan@empresa.com', department: 'Marketing', horas_objetivo: 8, hora_inicio: '09:00', role: 'employee' },
