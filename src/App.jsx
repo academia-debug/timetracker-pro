@@ -2343,10 +2343,6 @@ const EmployeePanel = memo(({ user, onLogout }) => {
                     style={{ width: `${progressPercentage}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>{selectedDateHours.toFixed(1)}h registradas</span>
-                  <span>{user.horas_objetivo}h objetivo</span>
-                </div>
               </div>
             </div>
           </div>
