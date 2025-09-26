@@ -738,28 +738,6 @@ const EditTaskModal = memo(({ task, isOpen, onClose, onSave, userCategories, use
           </div>
         </div>
       </div>
-
-      <EditTaskModal
-        task={selectedTask}
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setSelectedTask(null);
-        }}
-        onSave={handleSaveTask}
-        userCategories={userCategories}
-        user={user}
-      />
-
-      <ConfirmModal
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        onConfirm={confirmModal.onConfirm}
-        onCancel={closeConfirmModal}
-        danger={confirmModal.danger}
-        confirmText={confirmModal.danger ? "Eliminar" : "Confirmar"}
-      />
     </div>
   );
 });
